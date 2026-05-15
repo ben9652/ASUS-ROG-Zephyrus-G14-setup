@@ -1,0 +1,266 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue!70!black,
+}
+
+\lstdefinestyle{bash}{
+  language=bash,
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{gray!10},
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+}
+
+\title{%
+  \textbf{Control de Iluminación ROG}\\[0.4em]
+  \large Configuración personalizada en Linux para el\\
+  ASUS ROG Zephyrus G14 GA403UV
+}
+\author{pc-config}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────
+\section{Introducción}
+
+Este documento describe la configuración de iluminación del teclado y el slash
+bar (barra LED de la tapa) del portátil \textbf{ASUS ROG Zephyrus G14 GA403UV}
+bajo un sistema \textbf{CachyOS} con el compositor \textbf{Hyprland} (entorno
+Omarchy).
+
+El objetivo es proporcionar tres funcionalidades:
+
+\begin{enumerate}
+  \item \textbf{Ciclar efectos Aura} del teclado con una tecla dedicada (Fn+F4).
+  \item \textbf{Modo ambiental} (\emph{Screen Sync}): el teclado adopta
+        dinámicamente el color dominante de la pantalla.
+  \item \textbf{Ciclar modos del slash bar} con Super+\textbackslash.
+\end{enumerate}
+
+% ─────────────────────────────────────────────
+\section{Pila de software}
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  Componente & Versión & Función \\
+  \midrule
+  \texttt{asusctl} & 6.3.7-1 & CLI/daemon para hardware ASUS ROG \\
+  \texttt{asusd}   & 6.3.7-1 & Servicio D-Bus (\texttt{xyz.ljones.Asusd}) \\
+  \texttt{grim}    & ---      & Captura de pantalla en Wayland \\
+  \texttt{python-pillow} & 12.2.0-1 & Reescalado de imagen para color dominante \\
+  \texttt{busctl}  & systemd  & Lectura/escritura de propiedades D-Bus \\
+  \texttt{notify-send} & libnotify & Notificaciones de escritorio \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+El daemon \texttt{asusd} expone los siguientes objetos D-Bus relevantes:
+
+\begin{itemize}[nosep]
+  \item \textbf{Teclado Aura}:\\
+        \texttt{xyz.ljones.Asusd /xyz/ljones/aura/19b6\_3\_4 xyz.ljones.Aura}
+  \item \textbf{Slash bar}:\\
+        \texttt{xyz.ljones.Asusd /xyz/ljones/aura/193b\_4\_5 xyz.ljones.Slash}
+\end{itemize}
+
+% ─────────────────────────────────────────────
+\section{Scripts instalados}
+
+Todos los ejecutables se instalan en \texttt{\textasciitilde/.local/bin/} y
+requieren únicamente permisos de usuario.
+
+\subsection{\texttt{keyboard-ambient}}
+
+Demonio Python que captura continuamente la pantalla con \texttt{grim}, calcula
+el color dominante reescalando la imagen a 1×1 píxel, aplica un aumento de
+brillo si el pico es inferior a 80, y envía el color al teclado vía:
+
+\begin{lstlisting}[style=bash]
+asusctl aura effect static -c RRGGBB
+\end{lstlisting}
+
+Parámetros opcionales:
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  Argumento & Rango & Defecto \\
+  \midrule
+  \texttt{--fps} & 0.5\,--\,10 & 4 \\
+  \texttt{--brightness} & 0.0\,--\,1.0 & 1.0 \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{\texttt{keyboard-ambient-toggle}}
+
+Script Bash que activa o desactiva el modo ambiental:
+
+\begin{itemize}[nosep]
+  \item \textbf{Al activar}: guarda el efecto Aura actual (propiedad
+        \texttt{LedModeData} de D-Bus) en \texttt{/tmp/keyboard-aura-state} y
+        lanza \texttt{keyboard-ambient} en segundo plano.
+  \item \textbf{Al desactivar}: detiene el demonio y restaura el efecto previo
+        reconstruyendo el comando \texttt{asusctl aura effect \ldots}\ a partir
+        de los datos guardados.
+\end{itemize}
+
+\subsection{\texttt{keyboard-aura-cycle}}
+
+Avanza al siguiente efecto Aura (\texttt{asusctl aura effect --next-mode}),
+detiene el modo ambiental si estuviera activo, y muestra una notificación con
+el nombre del efecto.
+
+\textbf{Efectos disponibles} (número D-Bus → nombre):
+
+\begin{center}
+\begin{tabular}{rll}
+  \toprule
+  \# & Nombre & Descripción \\
+  \midrule
+  0  & Static           & Color fijo \\
+  1  & Breathe          & Pulsación suave \\
+  2  & Rainbow Cycle    & Ciclo de colores \\
+  3  & Rainbow Wave     & Ola de arcoíris \\
+  4  & Stars            & Estrellas \\
+  5  & Rain             & Lluvia \\
+  6  & Highlight        & Resaltar teclas activas \\
+  7  & Laser            & Láser \\
+  8  & Ripple           & Ondas \\
+  10 & Pulse            & Pulso \\
+  11 & Comet            & Cometa \\
+  12 & Flash            & Destello \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{\texttt{keyboard-slash-cycle}}
+
+Cicla entre los 16 modos del slash bar y muestra una notificación:
+
+\begin{center}
+\begin{tabular}{llll}
+  \toprule
+  Static & Bounce & Slash & Loading \\
+  BitStream & Transmission & Flow & Flux \\
+  Phantom & Spectrum & Hazard & Interfacing \\
+  Ramp & GameOver & Start & Buzzer \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Nota importante:} El slash bar del modelo GA403UV solo se activa
+durante eventos del sistema (arranque, suspensión y apagado). No existe modo
+continuo; el cambio de modo se aplicará en el próximo evento.
+
+% ─────────────────────────────────────────────
+\section{Atajos de teclado}
+
+Los atajos se registran en \texttt{\textasciitilde/.config/hypr/bindings.conf}
+(Hyprland).
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  Tecla & Acción & Script \\
+  \midrule
+  \textbf{Fn+F4} (XF86Launch3)     & Siguiente efecto Aura   & \texttt{keyboard-aura-cycle} \\
+  \textbf{Super+F4}                 & Activar/desactivar modo ambiental & \texttt{keyboard-ambient-toggle} \\
+  \textbf{Super+\textbackslash}     & Siguiente modo slash bar & \texttt{keyboard-slash-cycle} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Nota sobre Fn+F4:} En este portátil la tecla Fn+F4 (AURA) genera el
+keycode 202 (\texttt{KEY\_PROG3} = \texttt{XF86Launch3}), \emph{no}
+\texttt{XF86KbdLightOnOff} como podría esperarse. Se detectó leyendo
+directamente \texttt{/dev/input/event3}.
+
+% ─────────────────────────────────────────────
+\section{Instalación}
+
+El script \texttt{setup-keyboard-ambient.sh} instala todo de forma idempotente:
+
+\begin{lstlisting}[style=bash]
+cd ~/Documentos/pc-config
+bash setup-keyboard-ambient.sh
+\end{lstlisting}
+
+El script realiza las siguientes acciones:
+\begin{enumerate}
+  \item Escribe los cuatro scripts en \texttt{\textasciitilde/.local/bin/} con
+        permisos de ejecución.
+  \item Añade las tres líneas \texttt{bindd} a
+        \texttt{\textasciitilde/.config/hypr/bindings.conf} si no existen.
+\end{enumerate}
+
+Después de ejecutarlo, recarga Hyprland para que los atajos estén activos:
+
+\begin{lstlisting}[style=bash]
+hyprctl reload
+\end{lstlisting}
+
+% ─────────────────────────────────────────────
+\section{Resolución de problemas}
+
+\subsection*{El modo ambiental no restaura el efecto anterior}
+
+Comprueba que el archivo de estado fue creado correctamente:
+
+\begin{lstlisting}[style=bash]
+cat /tmp/keyboard-aura-state
+\end{lstlisting}
+
+Si está vacío o no existe, verifica que \texttt{asusd} esté en ejecución:
+
+\begin{lstlisting}[style=bash]
+systemctl status asusd
+\end{lstlisting}
+
+\subsection*{Fn+F4 no responde}
+
+Verifica el keycode real generado por esa tecla:
+
+\begin{lstlisting}[style=bash]
+python3 -c "
+import struct, time, select
+fmt = 'llHHI'; sz = struct.calcsize(fmt)
+with open('/dev/input/event3', 'rb') as f:
+    r,_,_ = select.select([f],[],[],5)
+    if r:
+        _,_,t,c,v = struct.unpack(fmt, f.read(sz))
+        print(f'type={t} code={c} val={v}')
+"
+\end{lstlisting}
+
+\subsection*{El slash bar no cambia visualmente}
+
+Es el comportamiento esperado en el modelo GA403UV. El slash bar solo muestra
+animaciones durante eventos de sistema. El modo guardado se aplicará la próxima
+vez que el equipo arranque, se suspenda o se apague.
+
+\end{document}

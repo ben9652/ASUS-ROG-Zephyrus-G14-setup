@@ -1,0 +1,7 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "busctl": true,
+        "asusctl": true,
+        "pdflatex": true
+    }
+}

@@ -1,0 +1,210 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue!70!black,
+}
+
+\lstdefinestyle{bash}{
+  language=bash,
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{gray!10},
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+}
+
+\title{%
+  \textbf{Instalación de Steam}\\[0.4em]
+  \large Procedimiento y resolución de errores en\\
+  ASUS ROG Zephyrus G14 GA403UV con CachyOS
+}
+\author{pc-config}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────
+\section{Contexto}
+
+El equipo es un \textbf{ASUS ROG Zephyrus G14 GA403UV} con \textbf{CachyOS}
+(base Arch Linux) y el entorno \textbf{Omarchy} (Hyprland + Wayland).
+Cuenta con configuración de GPU dual:
+
+\begin{itemize}
+  \item \textbf{iGPU}: AMD Radeon \emph{HawkPoint} --- driver \texttt{amdgpu},
+        conectada directamente al panel.
+  \item \textbf{dGPU}: NVIDIA GeForce RTX 4060 Laptop GPU (8 GB VRAM) ---
+        driver \texttt{nvidia-open} 595.71.05, arquitectura PRIME Offload.
+\end{itemize}
+
+Steam estaba disponible en el repositorio \texttt{multilib} pero su instalación
+directa fallaba por dos motivos independientes, descritos en las secciones
+siguientes.
+
+% ─────────────────────────────────────────────
+\section{Problema 1: base de datos local desactualizada}
+
+\subsection{Síntoma}
+
+Al ejecutar \lstinline[style=bash]{sudo pacman -S steam}, pacman emitía
+centenares de advertencias del tipo:
+
+\begin{lstlisting}[style=bash]
+advertencia: PAQUETE: no se encuentra la clave "%INSTALLED_DB%"
+             en la base de datos local
+\end{lstlisting}
+
+Estas advertencias afectaban a prácticamente todos los paquetes instalados en
+el sistema.
+
+\subsection{Causa}
+
+La base de datos local de pacman (\texttt{/var/lib/pacman/local/}) contenía
+entradas con el marcador literal \texttt{\%INSTALLED\_DB\%} sin sustituir,
+indicativo de una migración de formato de base de datos incompleta o de una
+instalación inicial que no terminó de registrar correctamente los metadatos.
+
+Aunque no bloqueaban la instalación, producían un output extremadamente ruidoso
+que dificultaba detectar errores reales.
+
+\subsection{Solución}
+
+Forzar la resincronización completa de los repositorios para descartar
+inconsistencias entre la base de datos remota y la local:
+
+\begin{lstlisting}[style=bash]
+sudo pacman -Syy
+\end{lstlisting}
+
+La doble \texttt{y} fuerza la re-descarga de todas las bases de datos remotas
+aunque pacman las considere actualizadas.
+
+% ─────────────────────────────────────────────
+\section{Problema 2: paquete \texttt{lib32-libxss} con error 404}
+
+\subsection{Síntoma}
+
+Una vez resincronizada la base de datos, la instalación de Steam fallaba con:
+
+\begin{lstlisting}[style=bash]
+error: no se pudo obtener el archivo
+       'lib32-libxss-1.2.4-2-x86_64.pkg.tar.zst'
+       desde archlinux.cachyos.org: The requested URL returned error: 404
+error: no se pudo obtener el archivo
+       'lib32-libxss-1.2.4-2-x86_64.pkg.tar.zst.sig'
+       desde fastly.mirror.pkgbuild.com: The requested URL returned error: 404
+\end{lstlisting}
+
+El error se reproducía en todos los mirrors disponibles.
+
+\subsection{Causa}
+
+La caché local de pacman contenía el archivo
+\texttt{lib32-libxss-1.2.4-2-x86\_64.pkg.tar.zst} de una versión anterior.
+Pacman lo consideraba ``actualizado'' (\emph{up to date}) pero el paquete real
+en los repositorios ya había avanzado a la versión \textbf{1.2.5-1}, de modo
+que al intentar descargar la firma \texttt{.sig} de la versión antigua obtenía
+un 404 en todos los espejos.
+
+\subsection{Solución}
+
+Eliminar el archivo cacheado obsoleto y reinstalar el paquete para forzar la
+descarga de la versión actual:
+
+\begin{lstlisting}[style=bash]
+sudo rm -f /var/cache/pacman/pkg/lib32-libxss*
+sudo pacman -S lib32-libxss
+\end{lstlisting}
+
+El repositorio multilib proveyó correctamente la versión 1.2.5-1.
+
+% ─────────────────────────────────────────────
+\section{Procedimiento completo de instalación}
+
+Una vez identificados y resueltos ambos problemas, la secuencia completa
+para instalar Steam es la siguiente:
+
+\begin{enumerate}
+  \item Resincronizar forzosamente los repositorios:
+\begin{lstlisting}[style=bash]
+sudo pacman -Syy
+\end{lstlisting}
+
+  \item Limpiar la caché del paquete problemático:
+\begin{lstlisting}[style=bash]
+sudo rm -f /var/cache/pacman/pkg/lib32-libxss*
+\end{lstlisting}
+
+  \item Instalar Steam (acepta con \texttt{S} cuando se pregunte):
+\begin{lstlisting}[style=bash]
+sudo pacman -S steam
+\end{lstlisting}
+\end{enumerate}
+
+Steam instala aproximadamente \textbf{48 MiB} de paquetes, incluyendo las
+dependencias \texttt{lib32} necesarias para ejecutar juegos de 32 bits.
+
+% ─────────────────────────────────────────────
+\section{Uso de Steam con la GPU NVIDIA}
+
+Por defecto Steam usa la iGPU AMD para renderizar. Para forzar la RTX 4060
+en un juego concreto, establecer las opciones de lanzamiento en
+\emph{Propiedades del juego}:
+
+\begin{lstlisting}[style=bash]
+prime-run %command%
+\end{lstlisting}
+
+Para activarlo globalmente en todos los juegos, ir a
+\textit{Steam $\to$ Configuración $\to$ Compatibilidad} y añadir la misma
+línea como opciones de lanzamiento predeterminadas.
+
+\subsection{Overlay de monitorización}
+
+Para visualizar el uso de GPU, CPU y framerate durante el juego:
+
+\begin{lstlisting}[style=bash]
+sudo pacman -S mangohud
+\end{lstlisting}
+
+Opciones de lanzamiento con overlay:
+
+\begin{lstlisting}[style=bash]
+MANGOHUD=1 prime-run %command%
+\end{lstlisting}
+
+\subsection{Nota sobre el MUX Switch}
+
+El G14 GA403UV dispone de \emph{MUX switch}, lo que permite conectar la
+NVIDIA directamente al panel eliminando el paso por la iGPU
+(\emph{Ultimate Mode} en Windows). En Linux se gestiona con
+\texttt{supergfxctl}:
+
+\begin{lstlisting}[style=bash]
+sudo pacman -S supergfxctl
+sudo systemctl enable --now supergfxd
+supergfxctl --mode AsusMuxDgpu   # NVIDIA directo al panel (requiere reinicio)
+supergfxctl --mode Hybrid        # PRIME normal (ahorro de bateria)
+\end{lstlisting}
+
+\end{document}
