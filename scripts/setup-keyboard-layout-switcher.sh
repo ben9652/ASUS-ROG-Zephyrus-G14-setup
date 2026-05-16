@@ -1,35 +1,57 @@
 #!/bin/bash
 # setup-keyboard-layout-switcher.sh
 #
-# Configura cambio de distribución de teclado US <-> Latam con Alt+Shift
+# Configura cambio de distribución de teclado US <-> Latam con Alt+` (grave)
 # y agrega un indicador en la barra de Waybar.
+#
+# NOTA: Se usa un keybinding de Hyprland (Alt+grave) en lugar de la opción XKB
+# grp:alt_shift_toggle, porque dicha opción colisiona con Shift+Alt+Tab
+# (cambio de foco entre ventanas) al dispararse a nivel XKB antes de procesar Tab.
 #
 # Seguro de ejecutar múltiples veces (idempotente).
 
 set -euo pipefail
 
 HYPR_INPUT="$HOME/.config/hypr/input.conf"
+HYPR_BINDINGS="$HOME/.config/hypr/bindings.conf"
 WAYBAR_CONFIG="$HOME/.config/waybar/config.jsonc"
 WAYBAR_STYLE="$HOME/.config/waybar/style.css"
 TS=$(date +%s)
 
-# ─── 1. Hyprland: distribuciones y atajo Alt+Shift ───────────────────────────
+# ─── 1. Hyprland: distribuciones de teclado ──────────────────────────────────
 
-echo "==> [1/3] Configurando input.conf..."
+echo "==> [1/4] Configurando input.conf..."
 
 cp "$HYPR_INPUT" "$HYPR_INPUT.bak.$TS"
 
 # Agregar 'latam' al kb_layout (reemplaza cualquier valor anterior)
 sed -i 's|^\(\s*\)kb_layout\s*=.*|\1kb_layout = us,latam|' "$HYPR_INPUT"
 
-# Agregar grp:alt_shift_toggle al kb_options (reemplaza cualquier valor anterior)
-sed -i 's|^\(\s*\)kb_options\s*=.*|\1kb_options = compose:caps,grp:alt_shift_toggle|' "$HYPR_INPUT"
+# Asegurar que kb_options NO incluya grp:alt_shift_toggle (usamos keybinding de
+# Hyprland en su lugar para evitar conflicto con Shift+Alt+Tab)
+sed -i 's|^\(\s*\)kb_options\s*=.*|\1kb_options = compose:caps|' "$HYPR_INPUT"
 
-echo "    kb_layout y kb_options actualizados."
+echo "    kb_layout y kb_options actualizados (sin grp:alt_shift_toggle)."
 
-# ─── 2. Waybar: agregar módulo hyprland/language ─────────────────────────────
+# ─── 2. Hyprland: keybinding Alt+grave para cambiar distribución ──────────────
 
-echo "==> [2/3] Configurando waybar config.jsonc..."
+echo "==> [2/4] Configurando bindings.conf..."
+
+if grep -q 'switchxkblayout' "$HYPR_BINDINGS"; then
+    echo "    Keybinding de switchxkblayout ya presente, sin cambios."
+else
+    cat >> "$HYPR_BINDINGS" <<'BIND'
+
+# Cambio de distribución de teclado US <-> Latam (Alt+`)
+# Se usa Alt+grave en lugar de Alt+Shift para evitar conflicto con Shift+Alt+Tab
+bindd = ALT, grave, Switch keyboard layout, exec, hyprctl switchxkblayout all next
+BIND
+    echo "    Keybinding Alt+grave agregado."
+fi
+
+# ─── 3. Waybar: agregar módulo hyprland/language ─────────────────────────────
+
+echo "==> [3/4] Configurando waybar config.jsonc..."
 
 cp "$WAYBAR_CONFIG" "$WAYBAR_CONFIG.bak.$TS"
 
@@ -67,9 +89,9 @@ with open(path, 'w') as f:
     f.write(content)
 PYEOF
 
-# ─── 3. Waybar: estilos CSS para el indicador ────────────────────────────────
+# ─── 4. Waybar: estilos CSS para el indicador ────────────────────────────────
 
-echo "==> [3/3] Configurando waybar style.css..."
+echo "==> [4/4] Configurando waybar style.css..."
 
 if grep -q '#language' "$WAYBAR_STYLE"; then
     echo "    Estilos de #language ya presentes, sin cambios."
