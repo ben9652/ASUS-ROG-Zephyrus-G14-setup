@@ -29,7 +29,7 @@ sed -i 's|^\(\s*\)kb_layout\s*=.*|\1kb_layout = us,latam|' "$HYPR_INPUT"
 
 # Asegurar que kb_options NO incluya grp:alt_shift_toggle (usamos keybinding de
 # Hyprland en su lugar para evitar conflicto con Shift+Alt+Tab)
-sed -i 's|^\(\s*\)kb_options\s*=.*|\1kb_options = compose:caps|' "$HYPR_INPUT"
+sed -i 's|^\(\s*\)kb_options\s*=.*|\1kb_options =|' "$HYPR_INPUT"
 
 echo "    kb_layout y kb_options actualizados (sin grp:alt_shift_toggle)."
 
