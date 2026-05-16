@@ -31,7 +31,11 @@ sed -i 's|^\(\s*\)kb_layout\s*=.*|\1kb_layout = us,latam|' "$HYPR_INPUT"
 # Hyprland en su lugar para evitar conflicto con Shift+Alt+Tab)
 sed -i 's|^\(\s*\)kb_options\s*=.*|\1kb_options =|' "$HYPR_INPUT"
 
+# Touchpad: scroll natural (deslizar arriba → baja el contenido)
+sed -i 's|^\(\s*\)#\s*natural_scroll\s*=.*|\1natural_scroll = true|' "$HYPR_INPUT"
+
 echo "    kb_layout y kb_options actualizados (sin grp:alt_shift_toggle)."
+echo "    natural_scroll activado en touchpad."
 
 # ─── 2. Hyprland: keybinding Alt+grave para cambiar distribución ──────────────
 

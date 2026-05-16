@@ -63,7 +63,7 @@ foco entre ventanas).
 | `Alt+`` ` | Cambia entre US y Latam |
 
 Modifica:
-- `~/.config/hypr/input.conf` — `kb_layout = us,latam`, `kb_options = compose:caps`
+- `~/.config/hypr/input.conf` — `kb_layout = us,latam`, `kb_options =` (vacío), `natural_scroll = true`
 - `~/.config/hypr/bindings.conf` — keybinding `Alt+grave → switchxkblayout`
 - `~/.config/waybar/config.jsonc` — añade el módulo `hyprland/language`
 - `~/.config/waybar/style.css` — estilos del indicador de idioma
