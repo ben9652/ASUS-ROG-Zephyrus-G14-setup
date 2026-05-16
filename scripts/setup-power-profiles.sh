@@ -25,9 +25,9 @@ mkdir -p "$BINDIR"
 cat > "$BINDIR/power-profile-cycle" << 'EOF'
 #!/usr/bin/env bash
 # power-profile-cycle: Cicla al siguiente perfil de rendimiento con asusctl.
-# Orden: Quiet → Balanced → Performance → Quiet → …
+# Orden: LowPower → Balanced → Performance → LowPower → …
 
-PROFILES=(Quiet Balanced Performance)
+PROFILES=(LowPower Balanced Performance)
 LABELS=("🔇 Silencio" "⚖️ Equilibrado" "🚀 Rendimiento")
 
 current=$(asusctl profile get 2>/dev/null | grep "^Active profile:" | awk '{print $NF}')
@@ -64,9 +64,13 @@ else
 fi
 
 # ── 3. Verificar que asusd está activo ────────────────────────────────────────
+# asusd requiere que /etc/asusd exista (ReadWritePaths en su unit file)
+mkdir -p /etc/asusd
+
 if ! systemctl is-active --quiet asusd 2>/dev/null; then
-    echo "  ⚠ asusd no está activo. Habilitando..."
-    systemctl enable --now asusd
+    echo "  ⚠ asusd no está activo. Iniciando..."
+    systemctl reset-failed asusd 2>/dev/null || true
+    systemctl start asusd || echo "  ⚠ No se pudo iniciar asusd. Comprueba con: systemctl status asusd"
 fi
 
 # ── 4. Recargar Hyprland si está corriendo ────────────────────────────────────

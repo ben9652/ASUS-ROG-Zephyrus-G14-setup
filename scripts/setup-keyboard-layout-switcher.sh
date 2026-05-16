@@ -111,18 +111,26 @@ fi
 echo ""
 echo "==> Aplicando cambios..."
 
-hyprctl reload
-sleep 0.5
-ERRORS=$(hyprctl configerrors)
-if [[ -n "$ERRORS" ]]; then
-    echo "ADVERTENCIA: errores en la configuración de Hyprland:"
-    echo "$ERRORS"
+if command -v hyprctl &>/dev/null && hyprctl version &>/dev/null 2>&1; then
+    hyprctl reload
+    sleep 0.5
+    ERRORS=$(hyprctl configerrors 2>/dev/null || true)
+    if [[ -n "$ERRORS" ]]; then
+        echo "ADVERTENCIA: errores en la configuración de Hyprland:"
+        echo "$ERRORS"
+    else
+        echo "    Hyprland recargado sin errores."
+    fi
 else
-    echo "    Hyprland recargado sin errores."
+    echo "    Hyprland no está corriendo; recárgalo manualmente (Super+Shift+R)."
 fi
 
-omarchy restart waybar
-echo "    Waybar reiniciado."
+if command -v omarchy &>/dev/null; then
+    omarchy restart waybar
+    echo "    Waybar reiniciado."
+else
+    echo "    omarchy no disponible; reinicia Waybar manualmente."
+fi
 
 echo ""
 echo "Listo. Usá Alt+Shift para cambiar entre 'us' y 'latam'."

@@ -22,6 +22,12 @@ if [[ $EUID -ne 0 ]]; then
     exit 1
 fi
 
+# Resolver HOME al directorio real del usuario que invocó sudo,
+# para que los scripts hijos accedan a ~/.config/ correctamente.
+if [[ -n "${SUDO_USER:-}" ]]; then
+    export HOME="$(getent passwd "$SUDO_USER" | cut -d: -f6)"
+fi
+
 SCRIPTS_DIR="$(cd "$(dirname "$0")/scripts" && pwd)"
 
 run_step() {
@@ -56,3 +62,7 @@ fi
 info "Paso 6 completado."
 
 echo -e "\n${GREEN}${BOLD}Configuración completa.${NC}"
+echo -e "\n${YELLOW}IMPORTANTE — pasos finales como usuario (no root):${NC}"
+echo -e "  1. Recarga Hyprland:   ${BOLD}hyprctl reload${NC}"
+echo -e "  2. Reinicia Waybar:    ${BOLD}omarchy restart waybar${NC}"
+echo -e "  3. Reinicia Steam para que la escala tome efecto."

@@ -113,7 +113,7 @@ fi
 
 # ── recarga Hyprland ──────────────────────────────────────────────────────────
 echo ""
-if command -v hyprctl &>/dev/null; then
+if command -v hyprctl &>/dev/null && hyprctl version &>/dev/null 2>&1; then
     hyprctl reload
     ERRORS=$(hyprctl configerrors 2>/dev/null || true)
     if [[ -z "$ERRORS" || "$ERRORS" == "no config errors" ]]; then
