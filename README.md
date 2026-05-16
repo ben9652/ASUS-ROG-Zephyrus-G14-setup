@@ -16,7 +16,8 @@ ASUS-ROG-Zephyrus-G14-setup/
 │   ├── setup-power-profiles.sh            ← paso 5: perfiles de rendimiento y Hz
 │   ├── setup-runtime-pm.sh                ← paso 6: runtime PM (ahorro de batería)
 │   ├── setup-m4-rog-control.sh            ← paso 7: botón M4 → ROG Control Center
-│   ├── setup-steam-display.sh             ← paso 8: escala de Steam multi-monitor
+│   ├── setup-voice-commands.sh            ← paso 8: comandos de voz offline
+│   ├── setup-steam-display.sh             ← paso 9: escala de Steam multi-monitor
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
     ├── luces-rog.tex / .pdf               ← documentación: iluminación ROG
@@ -43,7 +44,8 @@ indica exactamente cuál fue el problema.
 | 5 | `setup-power-profiles.sh` | No |
 | 6 | `setup-runtime-pm.sh` | Sí |
 | 7 | `setup-m4-rog-control.sh` | No |
-| 8 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
+| 8 | `setup-voice-commands.sh` | Sí |
+| 9 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
 
 > `setup-monitor-workspaces.sh` **no forma parte del setup global** porque
 > requiere conocer los nombres exactos de tus monitores. Ejecútalo por separado
@@ -241,7 +243,48 @@ Instala `rog-control-center` con `pacman` si no está presente.
 
 ---
 
-## Paso 8 — Escala de Steam en configuración multi-monitor
+## Paso 8 — Comandos de voz
+
+**Script:** `scripts/setup-voice-commands.sh`
+
+Instala un daemon de reconocimiento de voz **offline** (sin internet, sin nube)
+basado en [Vosk](https://alphacephei.com/vosk/) con el modelo pequeño de
+español (~40 MB). Al escuchar una frase, ejecuta directamente el comando de
+shell asociado.
+
+| Atajo | Acción |
+|---|---|
+| `Super+Alt+V` | Activar / desactivar escucha |
+| `Ctrl+Return` | Ejecutar comando (Walker) |
+| `Super+Shift+V` | Abrir Visual Studio Code |
+
+Instala en `~/.local/bin/`:
+- `voice-commands` — daemon Python que carga el modelo Vosk, construye una
+  gramática limitada a las frases conocidas (más rápido y preciso) y ejecuta
+  el comando shell correspondiente al reconocer una frase.
+- `voice-commands-toggle` — inicia o detiene el daemon; muestra notificación
+  en pantalla.
+
+Configuración en `~/.config/voice-commands/commands.conf`:
+
+```
+# Formato: frase = comando shell
+ejecutar comando         = omarchy-launch-walker
+abrir twitter            = omarchy-launch-webapp "https://x.com/"
+abrir navegador          = omarchy-launch-browser
+abrir terminal           = xdg-terminal-exec
+abrir visual studio code = code
+```
+
+Añadir o cambiar comandos: editar el archivo y reiniciar el daemon con
+`Super+Alt+V` dos veces (apagar → encender).
+
+Dependencias: `python-vosk` (chaotic-aur / AUR), `python-sounddevice` (repos
+oficiales), modelo `vosk-model-small-es-0.42`.
+
+---
+
+## Paso 9 — Escala de Steam en configuración multi-monitor
 
 **Script:** `scripts/setup-steam-display.sh`
 

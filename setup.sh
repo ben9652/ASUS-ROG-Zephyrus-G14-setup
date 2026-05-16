@@ -52,16 +52,17 @@ run_step 4 "Instalación de Steam"                      "instalar-steam.sh"
 run_step 5 "Perfiles de rendimiento (Fn+F5)"           "setup-power-profiles.sh"
 run_step 6 "Runtime power management (PCI/NVMe/USB)"   "setup-runtime-pm.sh"
 run_step 7 "Botón M4 → ROG Control Center"             "setup-m4-rog-control.sh"
+run_step 8 "Comandos de voz (Vosk)"                    "setup-voice-commands.sh"
 
-# Paso 8 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
-header "Paso 8: Escala de Steam en monitor Full HD + laptop 3K"
+# Paso 9 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
+header "Paso 9: Escala de Steam en monitor Full HD + laptop 3K"
 if [[ -z "${SUDO_USER:-}" ]]; then
     warn "SUDO_USER no definido; ejecutando setup-steam-display.sh como root (puede fallar)."
     bash "$SCRIPTS_DIR/setup-steam-display.sh"
 else
     sudo -u "$SUDO_USER" bash "$SCRIPTS_DIR/setup-steam-display.sh"
 fi
-info "Paso 8 completado."
+info "Paso 9 completado."
 
 echo -e "\n${GREEN}${BOLD}Configuración completa.${NC}"
 echo -e "\n${YELLOW}IMPORTANTE — pasos finales como usuario (no root):${NC}"
