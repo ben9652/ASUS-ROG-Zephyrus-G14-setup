@@ -279,7 +279,7 @@ abrir visual studio code = code
 Añadir o cambiar comandos: editar el archivo y reiniciar el daemon con
 `Super+Alt+V` dos veces (apagar → encender).
 
-Dependencias: `python-vosk` (chaotic-aur / AUR), `python-sounddevice` (repos
+Dependencias: `python-vosk` (chaotic-aur / AUR), `python-pyaudio` (repos
 oficiales), modelo `vosk-model-small-es-0.42`.
 
 ---

@@ -37,8 +37,8 @@ mkdir -p "$BIN_DIR" "$CONF_DIR" "$(dirname "$MODEL_DIR")"
 
 echo "==> [1/5] Instalando dependencias Python (vosk, sounddevice)..."
 
-# python-sounddevice y portaudio están en los repos oficiales de Arch
-pacman -S --noconfirm --needed python-sounddevice portaudio
+# python-pyaudio está en los repos oficiales de Arch
+pacman -S --noconfirm --needed python-pyaudio portaudio
 
 # python-vosk está en chaotic-aur (CachyOS lo tiene habilitado por defecto)
 if pacman -S --noconfirm --needed python-vosk 2>/dev/null; then
@@ -67,7 +67,9 @@ if [[ -f "$MODEL_DIR/am/final.mdl" ]]; then
     echo "    Modelo ya presente en $MODEL_DIR, sin cambios."
 else
     echo "    Descargando $MODEL_URL"
-    curl -L --progress-bar -o "$MODEL_ZIP" "$MODEL_URL"
+    # --insecure: el certificado SSL de alphacephei.com está caducado (mayo 2026).
+    # Riesgo mínimo: descargamos un modelo público de ML, no credenciales.
+    curl -L --insecure --progress-bar -o "$MODEL_ZIP" "$MODEL_URL"
 
     echo "    Extrayendo modelo..."
     python3 -m zipfile -e "$MODEL_ZIP" /tmp/vosk-extract/
@@ -97,7 +99,6 @@ Modelo:        ~/.local/share/vosk/model-es/
 import json
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 MODEL_PATH    = Path.home() / ".local/share/vosk/model-es"
@@ -132,7 +133,7 @@ def notify(title, body, icon="audio-input-microphone"):
 def main():
     try:
         import vosk
-        import sounddevice as sd
+        import pyaudio
     except ImportError as e:
         sys.exit(f"ERROR: Dependencia faltante — {e}\nEjecuta: setup-voice-commands.sh")
 
@@ -156,27 +157,32 @@ def main():
     print(f"Escuchando — {len(commands)} comandos activos. Ctrl+C para detener.")
     notify("Comandos de voz", f"🎤 Escuchando — {len(commands)} comandos activos")
 
-    def callback(indata, frames, time_info, status):
-        if rec.AcceptWaveform(bytes(indata)):
-            text = json.loads(rec.Result()).get('text', '').strip().lower()
-            if text and text != '[unk]' and text in commands:
-                print(f"  → {text}")
-                notify("Comando de voz", f"🎤 {text}")
-                subprocess.Popen(['bash', '-c', commands[text]])
+    pa = pyaudio.PyAudio()
+    stream = pa.open(
+        format=pyaudio.paInt16,
+        channels=1,
+        rate=SAMPLE_RATE,
+        input=True,
+        frames_per_buffer=BLOCK_SIZE
+    )
+    stream.start_stream()
 
     try:
-        with sd.RawInputStream(
-            samplerate=SAMPLE_RATE,
-            blocksize=BLOCK_SIZE,
-            dtype='int16',
-            channels=1,
-            callback=callback
-        ):
-            while True:
-                time.sleep(0.1)
+        while True:
+            data = stream.read(BLOCK_SIZE, exception_on_overflow=False)
+            if rec.AcceptWaveform(data):
+                text = json.loads(rec.Result()).get('text', '').strip().lower()
+                if text and text != '[unk]' and text in commands:
+                    print(f"  → {text}")
+                    notify("Comando de voz", f"🎤 {text}")
+                    subprocess.Popen(['bash', '-c', commands[text]])
     except KeyboardInterrupt:
         print("\nDetenido.")
         notify("Comandos de voz", "Desactivado 🔇", icon="audio-input-microphone-muted")
+    finally:
+        stream.stop_stream()
+        stream.close()
+        pa.terminate()
 
 
 if __name__ == '__main__':
