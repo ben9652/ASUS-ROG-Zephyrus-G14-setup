@@ -9,12 +9,13 @@ con **CachyOS** y el entorno **Omarchy** (Hyprland + Wayland).
 ASUS-ROG-Zephyrus-G14-setup/
 ├── setup.sh                               ← script de configuración global
 ├── scripts/
-│   ├── setup-keyboard-layout-switcher.sh  ← paso 1: idioma del teclado
+│   ├── setup-keyboard-layout-switcher.sh  ← paso 1: idioma y touchpad
 │   ├── setup-keyboard-ambient.sh          ← paso 2: iluminación del teclado
 │   ├── instalar-steam.sh                  ← paso 3: instalación de Steam
-│   ├── setup-power-profiles.sh            ← paso 4: perfiles de rendimiento
-│   ├── setup-m4-rog-control.sh            ← paso 5: botón M4 → ROG Control Center
-│   ├── setup-steam-display.sh             ← paso 6: escala de Steam multi-monitor
+│   ├── setup-power-profiles.sh            ← paso 4: perfiles de rendimiento y Hz
+│   ├── setup-runtime-pm.sh               ← paso 5: runtime PM (ahorro de batería)
+│   ├── setup-m4-rog-control.sh            ← paso 6: botón M4 → ROG Control Center
+│   ├── setup-steam-display.sh             ← paso 7: escala de Steam multi-monitor
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
     ├── luces-rog.tex / .pdf               ← documentación: iluminación ROG
@@ -38,8 +39,9 @@ indica exactamente cuál fue el problema.
 | 2 | `setup-keyboard-ambient.sh` | No |
 | 3 | `instalar-steam.sh` | Sí |
 | 4 | `setup-power-profiles.sh` | No |
-| 5 | `setup-m4-rog-control.sh` | No |
-| 6 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
+| 5 | `setup-runtime-pm.sh` | Sí |
+| 6 | `setup-m4-rog-control.sh` | No |
+| 7 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
 
 > `setup-monitor-workspaces.sh` **no forma parte del setup global** porque
 > requiere conocer los nombres exactos de tus monitores. Ejecútalo por separado
@@ -149,25 +151,61 @@ supergfxctl --mode Hybrid       # PRIME normal (ahorro de batería)
 
 ---
 
-## Paso 4 — Perfiles de rendimiento
+## Paso 4 — Perfiles de rendimiento y frecuencia de pantalla
 
 **Script:** `scripts/setup-power-profiles.sh`
 
-Configura el ciclo de perfiles de rendimiento mediante `Fn+F5`, usando
-`asusctl` (requiere que el servicio `asusd` esté activo, el script lo habilita
-si no lo está).
+Configura el ciclo de perfiles de rendimiento mediante `Fn+F5` usando
+`power-profiles-daemon` (PPD), cambia automáticamente la frecuencia de
+refresco de la pantalla según el perfil, y sincroniza el perfil al
+conectar/desconectar el cargador.
 
 | Atajo | Acción |
 |---|---|
-| `Fn+F5` | Cicla Quiet → Balanced → Performance → … |
+| `Fn+F5` | Cicla Silencio (60 Hz) → Equilibrado (120 Hz) → Rendimiento (120 Hz) |
 
 Instala en `~/.local/bin/`:
-- `power-profile-cycle` — lee el perfil activo con `asusctl profile get`,
-  avanza al siguiente y muestra una notificación en pantalla.
+- `power-profile-cycle` — lee el perfil activo con `powerprofilesctl get`,
+  avanza al siguiente, ajusta la frecuencia de pantalla con
+  `hyprctl keyword monitor` y muestra una notificación.
+- `display-hz-sync` — daemon que observa el estado del adaptador de AC
+  con `udevadm monitor` y aplica 60 Hz en batería / 120 Hz en corriente
+  automáticamente, incluso sin pulsar `Fn+F5`.
+
+Crea el servicio de usuario `~/.config/systemd/user/display-hz-sync.service`
+(habilitado en la sesión gráfica) y la regla udev del sistema
+`/etc/udev/rules.d/99-power-profile.rules` que cambia el perfil PPD al
+desconectar (`power-saver`) o conectar (`balanced`) el cargador.
+
+> El hardware es un **ASUS ROG GA403UV**: `asusd` está en ejecución pero
+> `asusctl` no funciona correctamente con esta versión del firmware/kernel.
+> Se usa `power-profiles-daemon` como capa de control exclusiva.
+> `amd_pstate=active` está confirmado activo.
 
 ---
 
-## Paso 5 — Botón M4 → ROG Control Center
+## Paso 5 — Runtime Power Management
+
+**Script:** `scripts/setup-runtime-pm.sh`
+
+Habilita el runtime power management para dispositivos PCI, NVMe y USB.
+Por defecto, el kernel deja muchos dispositivos PCIe en estado `active`
+aunque estén inactivos, consumiendo varios vatios innecesariamente.
+
+Este script instala `/usr/local/bin/pci-runtime-pm` y el servicio
+`/etc/systemd/system/powertop-autotune.service` que lo ejecuta en cada arranque.
+
+Qué hace el script de runtime PM:
+- **PCI**: pone todos los dispositivos en `power/control = auto`
+- **NVMe**: activa runtime PM del SSD
+- **USB**: activa autosuspend en todos los dispositivos excepto los HID
+  (teclado, ratón, touchpad)
+
+Ahorro típico: **~8–10 W** en batería (de ~21 W → ~13 W con perfil `power-saver`).
+
+---
+
+## Paso 6 — Botón M4 → ROG Control Center
 
 **Script:** `scripts/setup-m4-rog-control.sh`
 
@@ -182,7 +220,7 @@ Instala `rog-control-center` con `pacman` si no está presente.
 
 ---
 
-## Paso 6 — Escala de Steam en configuración multi-monitor
+## Paso 7 — Escala de Steam en configuración multi-monitor
 
 **Script:** `scripts/setup-steam-display.sh`
 
@@ -238,12 +276,36 @@ Crea un backup del `hyprland.conf` antes de modificarlo y es idempotente
 
 ---
 
+## Bootloader
+
+El gestor de arranque es **Limine**, configurado en `/boot/limine.conf`.
+
+- `default_entry: 3` → arranca directamente en `linux-cachyos` (sin menú)
+- `timeout: 0` → no muestra el menú de selección
+
+> `/boot/limine.conf` es **regenerado automáticamente** por `limine-entry-tool`
+> cada vez que se actualiza el kernel. Los cambios manuales (como los parámetros
+> de energía) deben reaplicarse tras cada actualización del kernel.
+
+Parámetros de cmdline añadidos manualmente en la entrada `linux-cachyos`:
+
+```
+pcie_aspm.policy=powersupersave
+nvme_core.default_ps_max_latency_us=0
+```
+
+---
+
 ## Hardware
 
 | Componente | Detalle |
 |---|---|
 | Modelo | ASUS ROG Zephyrus G14 GA403UV |
-| Sistema | CachyOS · kernel 7.x · Wayland |
+| Sistema | CachyOS · kernel `linux-cachyos` 7.x · Wayland |
+| Kernel LTS | `linux-cachyos-lts` 6.18 instalado pero no por defecto |
 | Entorno | Omarchy (Hyprland) |
-| iGPU | AMD Radeon HawkPoint · driver `amdgpu` |
+| iGPU | AMD Radeon HawkPoint · driver `amdgpu` · `amd_pstate=active` |
 | dGPU | NVIDIA RTX 4060 Laptop (8 GB) · driver `nvidia-open` 595.x |
+| Bluetooth | MT7922 · funciona en kernel 7.x (falla en LTS 6.18 por protocolo WMT) |
+| Pantalla | 2880×1800 · 120 Hz máx · escala 2.0 · nombre `eDP-2` |
+| Adaptador AC | `/sys/class/power_supply/ACAD/online` (0 = batería, 1 = AC) |
