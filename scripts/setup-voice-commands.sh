@@ -238,6 +238,24 @@ abrir twitter            = omarchy-launch-webapp "https://x.com/"
 abrir navegador          = omarchy-launch-browser
 abrir terminal           = xdg-terminal-exec
 abrir visual studio code = code
+cambiar division         = hyprctl dispatch layoutmsg togglesplit
+
+# Enfocar ventanas
+enfocar izquierda        = hyprctl dispatch movefocus l
+enfocar derecha          = hyprctl dispatch movefocus r
+enfocar arriba           = hyprctl dispatch movefocus u
+enfocar abajo            = hyprctl dispatch movefocus d
+
+# Gestión de ventanas
+cerrar ventana           = hyprctl dispatch killactive
+pantalla completa        = hyprctl dispatch fullscreen 0
+cubrir todo el ancho     = hyprctl dispatch fullscreen 1
+
+# Redimensionar ventanas
+aumentar izquierda       = hyprctl dispatch resizeactive -100 0
+aumentar abajo           = hyprctl dispatch resizeactive 0 100
+contraer izquierda       = hyprctl dispatch resizeactive 100 0
+contraer arriba          = hyprctl dispatch resizeactive 0 -100
 EOF
     echo "    $CONF_DIR/commands.conf creado."
 fi
