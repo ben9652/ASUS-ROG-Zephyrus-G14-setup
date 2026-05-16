@@ -11,11 +11,12 @@ ASUS-ROG-Zephyrus-G14-setup/
 ├── scripts/
 │   ├── setup-keyboard-layout-switcher.sh  ← paso 1: idioma y touchpad
 │   ├── setup-keyboard-ambient.sh          ← paso 2: iluminación del teclado
-│   ├── instalar-steam.sh                  ← paso 3: instalación de Steam
-│   ├── setup-power-profiles.sh            ← paso 4: perfiles de rendimiento y Hz
-│   ├── setup-runtime-pm.sh               ← paso 5: runtime PM (ahorro de batería)
-│   ├── setup-m4-rog-control.sh            ← paso 6: botón M4 → ROG Control Center
-│   ├── setup-steam-display.sh             ← paso 7: escala de Steam multi-monitor
+│   ├── instalar-vscode.sh                 ← paso 3: instalación de VSCode
+│   ├── instalar-steam.sh                  ← paso 4: instalación de Steam
+│   ├── setup-power-profiles.sh            ← paso 5: perfiles de rendimiento y Hz
+│   ├── setup-runtime-pm.sh                ← paso 6: runtime PM (ahorro de batería)
+│   ├── setup-m4-rog-control.sh            ← paso 7: botón M4 → ROG Control Center
+│   ├── setup-steam-display.sh             ← paso 8: escala de Steam multi-monitor
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
     ├── luces-rog.tex / .pdf               ← documentación: iluminación ROG
@@ -37,11 +38,12 @@ indica exactamente cuál fue el problema.
 |------|--------|:---:|
 | 1 | `setup-keyboard-layout-switcher.sh` | No |
 | 2 | `setup-keyboard-ambient.sh` | No |
-| 3 | `instalar-steam.sh` | Sí |
-| 4 | `setup-power-profiles.sh` | No |
-| 5 | `setup-runtime-pm.sh` | Sí |
-| 6 | `setup-m4-rog-control.sh` | No |
-| 7 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
+| 3 | `instalar-vscode.sh` | Sí |
+| 4 | `instalar-steam.sh` | Sí |
+| 5 | `setup-power-profiles.sh` | No |
+| 6 | `setup-runtime-pm.sh` | Sí |
+| 7 | `setup-m4-rog-control.sh` | No |
+| 8 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
 
 > `setup-monitor-workspaces.sh` **no forma parte del setup global** porque
 > requiere conocer los nombres exactos de tus monitores. Ejecútalo por separado
@@ -105,7 +107,26 @@ Dependencias requeridas: `asusctl`, `grim`, `python-pillow`.
 
 ---
 
-## Paso 3 — Steam
+## Paso 3 — VSCode
+
+**Script:** `scripts/instalar-vscode.sh`
+
+Instala **Visual Studio Code** en su versión propietaria de Microsoft
+(`visual-studio-code-bin`), disponible en el repositorio **chaotic-aur** que
+CachyOS tiene habilitado por defecto.
+
+Se usa esta versión (y no el paquete `code` de los repos oficiales de Arch)
+porque la versión open-source usa el registro Open VSX en lugar del
+Marketplace de Microsoft, por lo que extensiones como **GitHub Copilot** no
+estarán disponibles.
+
+Además configura `~/.config/code-flags.conf` para ejecutar VSCode de forma
+nativa en Wayland, evitando el texto borroso que aparece en pantallas HiDPI
+(como la pantalla 3K de esta laptop) al correr bajo XWayland.
+
+---
+
+## Paso 4 — Steam
 
 **Script:** `scripts/instalar-steam.sh`  
 **Documentación:** `docs/instalar-steam.pdf`
@@ -151,7 +172,7 @@ supergfxctl --mode Hybrid       # PRIME normal (ahorro de batería)
 
 ---
 
-## Paso 4 — Perfiles de rendimiento y frecuencia de pantalla
+## Paso 5 — Perfiles de rendimiento y frecuencia de pantalla
 
 **Script:** `scripts/setup-power-profiles.sh`
 
@@ -184,7 +205,7 @@ desconectar (`power-saver`) o conectar (`balanced`) el cargador.
 
 ---
 
-## Paso 5 — Runtime Power Management
+## Paso 6 — Runtime Power Management
 
 **Script:** `scripts/setup-runtime-pm.sh`
 
@@ -205,7 +226,7 @@ Ahorro típico: **~8–10 W** en batería (de ~21 W → ~13 W con perfil `power-
 
 ---
 
-## Paso 6 — Botón M4 → ROG Control Center
+## Paso 7 — Botón M4 → ROG Control Center
 
 **Script:** `scripts/setup-m4-rog-control.sh`
 
@@ -220,7 +241,7 @@ Instala `rog-control-center` con `pacman` si no está presente.
 
 ---
 
-## Paso 7 — Escala de Steam en configuración multi-monitor
+## Paso 8 — Escala de Steam en configuración multi-monitor
 
 **Script:** `scripts/setup-steam-display.sh`
 

@@ -47,20 +47,21 @@ echo -e "Fecha: $(date '+%d/%m/%Y %H:%M')\n"
 
 run_step 1 "Configuración de idioma del teclado"       "setup-keyboard-layout-switcher.sh"
 run_step 2 "Configuración de luces del teclado"        "setup-keyboard-ambient.sh"
-run_step 3 "Instalación de Steam"                      "instalar-steam.sh"
-run_step 4 "Perfiles de rendimiento (Fn+F5)"           "setup-power-profiles.sh"
-run_step 5 "Runtime power management (PCI/NVMe/USB)"   "setup-runtime-pm.sh"
-run_step 6 "Botón M4 → ROG Control Center"             "setup-m4-rog-control.sh"
+run_step 3 "Instalación de VSCode"                     "instalar-vscode.sh"
+run_step 4 "Instalación de Steam"                      "instalar-steam.sh"
+run_step 5 "Perfiles de rendimiento (Fn+F5)"           "setup-power-profiles.sh"
+run_step 6 "Runtime power management (PCI/NVMe/USB)"   "setup-runtime-pm.sh"
+run_step 7 "Botón M4 → ROG Control Center"             "setup-m4-rog-control.sh"
 
-# Paso 7 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
-header "Paso 7: Escala de Steam en monitor Full HD + laptop 3K"
+# Paso 8 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
+header "Paso 8: Escala de Steam en monitor Full HD + laptop 3K"
 if [[ -z "${SUDO_USER:-}" ]]; then
     warn "SUDO_USER no definido; ejecutando setup-steam-display.sh como root (puede fallar)."
     bash "$SCRIPTS_DIR/setup-steam-display.sh"
 else
     sudo -u "$SUDO_USER" bash "$SCRIPTS_DIR/setup-steam-display.sh"
 fi
-info "Paso 7 completado."
+info "Paso 8 completado."
 
 echo -e "\n${GREEN}${BOLD}Configuración completa.${NC}"
 echo -e "\n${YELLOW}IMPORTANTE — pasos finales como usuario (no root):${NC}"
