@@ -12,12 +12,13 @@ ASUS-ROG-Zephyrus-G14-setup/
 │   ├── setup-keyboard-layout-switcher.sh  ← paso 1: idioma y touchpad
 │   ├── setup-keyboard-ambient.sh          ← paso 2: iluminación del teclado
 │   ├── instalar-vscode.sh                 ← paso 3: instalación de VSCode
-│   ├── instalar-steam.sh                  ← paso 4: instalación de Steam
-│   ├── setup-power-profiles.sh            ← paso 5: perfiles de rendimiento y Hz
-│   ├── setup-runtime-pm.sh                ← paso 6: runtime PM (ahorro de batería)
-│   ├── setup-m4-rog-control.sh            ← paso 7: botón M4 → ROG Control Center
-│   ├── setup-voice-commands.sh            ← paso 8: comandos de voz offline
-│   ├── setup-steam-display.sh             ← paso 9: escala de Steam multi-monitor
+│   ├── instalar-trans.sh                  ← paso 4: instalación de trans
+│   ├── instalar-steam.sh                  ← paso 5: instalación de Steam
+│   ├── setup-power-profiles.sh            ← paso 6: perfiles de rendimiento y Hz
+│   ├── setup-runtime-pm.sh                ← paso 7: runtime PM (ahorro de batería)
+│   ├── setup-m4-rog-control.sh            ← paso 8: botón M4 → ROG Control Center
+│   ├── setup-voice-commands.sh            ← paso 9: comandos de voz offline
+│   ├── setup-steam-display.sh             ← paso 12: escala de Steam multi-monitor
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
     ├── luces-rog.tex / .pdf               ← documentación: iluminación ROG
@@ -32,7 +33,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 sudo ./setup.sh
 ```
 
-Ejecuta los pasos **1 al 6** en orden. Si alguno falla, el proceso se detiene e
+Ejecuta los pasos **1 al 12** en orden. Si alguno falla, el proceso se detiene e
 indica exactamente cuál fue el problema.
 
 | Paso | Script | Requiere root |
@@ -40,12 +41,15 @@ indica exactamente cuál fue el problema.
 | 1 | `setup-keyboard-layout-switcher.sh` | No |
 | 2 | `setup-keyboard-ambient.sh` | No |
 | 3 | `instalar-vscode.sh` | Sí |
-| 4 | `instalar-steam.sh` | Sí |
-| 5 | `setup-power-profiles.sh` | No |
-| 6 | `setup-runtime-pm.sh` | Sí |
-| 7 | `setup-m4-rog-control.sh` | No |
-| 8 | `setup-voice-commands.sh` | Sí |
-| 9 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
+| 4 | `instalar-trans.sh` | Sí |
+| 5 | `instalar-steam.sh` | Sí |
+| 6 | `setup-power-profiles.sh` | No |
+| 7 | `setup-runtime-pm.sh` | Sí |
+| 8 | `setup-m4-rog-control.sh` | No |
+| 9 | `setup-voice-commands.sh` | Sí |
+| 10 | `setup-screenshots.sh` | No |
+| 11 | `setup-hyprland-compat.sh` | No |
+| 12 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
 
 > `setup-monitor-workspaces.sh` **no forma parte del setup global** porque
 > requiere conocer los nombres exactos de tus monitores. Ejecútalo por separado
@@ -128,7 +132,39 @@ nativa en Wayland, evitando el texto borroso que aparece en pantallas HiDPI
 
 ---
 
-## Paso 4 — Steam
+## Paso 4 — trans (translate-shell)
+
+**Script:** `scripts/instalar-trans.sh`
+
+Instala la utilidad de traducción en terminal `trans` mediante el paquete
+`translate-shell` de Arch/CachyOS. El script es idempotente: si `trans` ya
+existe, no modifica nada.
+
+Guía rápida:
+
+```bash
+# Inglés -> Español
+trans en:es "hello world"
+
+# Auto-detectar idioma origen -> Español
+trans :es "how are you?"
+
+# Español -> Inglés
+trans es:en "¿Dónde está la estación?"
+
+# Traducción de una sola palabra
+trans :es keyboard
+
+# Modo interactivo
+trans -shell
+```
+
+Tip: puedes crear alias cortos en tu shell, por ejemplo `te` para traducir a
+español (`alias te='trans :es'`).
+
+---
+
+## Paso 5 — Steam
 
 **Script:** `scripts/instalar-steam.sh`  
 **Documentación:** `docs/instalar-steam.pdf`
@@ -174,7 +210,7 @@ supergfxctl --mode Hybrid       # PRIME normal (ahorro de batería)
 
 ---
 
-## Paso 5 — Perfiles de rendimiento y frecuencia de pantalla
+## Paso 6 — Perfiles de rendimiento y frecuencia de pantalla
 
 **Script:** `scripts/setup-power-profiles.sh`
 
@@ -207,7 +243,7 @@ desconectar (`power-saver`) o conectar (`balanced`) el cargador.
 
 ---
 
-## Paso 6 — Runtime Power Management
+## Paso 7 — Runtime Power Management
 
 **Script:** `scripts/setup-runtime-pm.sh`
 
@@ -228,7 +264,7 @@ Ahorro típico: **~8–10 W** en batería (de ~21 W → ~13 W con perfil `power-
 
 ---
 
-## Paso 7 — Botón M4 → ROG Control Center
+## Paso 8 — Botón M4 → ROG Control Center
 
 **Script:** `scripts/setup-m4-rog-control.sh`
 
@@ -243,7 +279,7 @@ Instala `rog-control-center` con `pacman` si no está presente.
 
 ---
 
-## Paso 8 — Comandos de voz
+## Paso 9 — Comandos de voz
 
 **Script:** `scripts/setup-voice-commands.sh`
 
@@ -284,7 +320,40 @@ oficiales), modelo `vosk-model-small-es-0.42`.
 
 ---
 
-## Paso 9 — Escala de Steam en configuración multi-monitor
+## Paso 10 — Atajos de captura de pantalla
+
+**Script:** `scripts/setup-screenshots.sh`
+
+Instala herramientas de captura para Wayland (`grim`, `slurp`,
+`wl-clipboard`, `hyprpicker`, `satty`) y configura atajos en Hyprland.
+
+| Atajo | Acción |
+|---|---|
+| `Fn+F6` (`XF86Launch5`) | Captura inteligente (ventana o región) |
+| `Super+Shift+S` | Captura de región |
+
+Las capturas se guardan en `~/Pictures`, se copian al portapapeles y se pueden
+anotar con Satty.
+
+---
+
+## Paso 11 — Compatibilidad Omarchy ↔ Hyprland
+
+**Script:** `scripts/setup-hyprland-compat.sh`
+
+Corrige incompatibilidades de configuración en
+`~/.local/share/omarchy/default/hypr/looknfeel.conf` para Hyprland 0.48+:
+
+- Reemplaza `col.border_locked_active = -1` y
+  `col.border_locked_inactive = -1` por valores válidos.
+- Comenta `pseudotile` en el bloque `dwindle` (opción eliminada).
+
+El script es idempotente y puede recargar Hyprland automáticamente si hay
+sesión activa.
+
+---
+
+## Paso 12 — Escala de Steam en configuración multi-monitor
 
 **Script:** `scripts/setup-steam-display.sh`
 
