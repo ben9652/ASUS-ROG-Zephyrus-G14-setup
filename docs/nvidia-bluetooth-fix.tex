@@ -1,0 +1,496 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue!70!black,
+}
+
+\lstdefinestyle{bash}{
+  language=bash,
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{gray!10},
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+}
+
+\lstdefinestyle{c}{
+  language=C,
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{gray!10},
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+  keywordstyle=\color{blue!70!black},
+  commentstyle=\color{green!50!black}\itshape,
+  stringstyle=\color{red!60!black},
+  morekeywords={u8,__le16,__be16,__le32,__packed,int,static},
+}
+
+\title{%
+  \textbf{Resolución de problemas de drivers:}\\
+  \textbf{NVIDIA y Bluetooth}\\[0.4em]
+  \large Compatibilidad de kernel, degradación de driver y\\
+  parche DKMS para el ASUS ROG Zephyrus G14 GA403UV
+}
+\author{pc-config}
+\date{Mayo de 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────
+\section{Introducción}
+
+Este documento recoge la resolución de dos problemas independientes de drivers
+que afectaban al \textbf{ASUS ROG Zephyrus G14 GA403UV} con
+\textbf{CachyOS} (base Arch Linux) y el entorno \textbf{Omarchy} (Hyprland +
+Wayland):
+
+\begin{enumerate}
+  \item \textbf{Driver NVIDIA}: artefactos visuales graves en juegos y
+        incompatibilidad del driver 580 con el kernel 7.x, que obligó a fijar
+        el kernel LTS~6.18 como arranque predeterminado.
+  \item \textbf{Bluetooth MediaTek MT7922}: fallo sistemático en cada arranque
+        con el mensaje \texttt{Failed to send wmt func ctrl (-22)}, causado por
+        un cambio de comportamiento en el firmware de febrero~de~2026.
+\end{enumerate}
+
+Ambos problemas conviven: la solución del Bluetooth requiere el kernel LTS, que
+a su vez es necesario por la limitación del driver NVIDIA.
+
+% ─────────────────────────────────────────────
+\section{Entorno del sistema}
+
+\begin{center}
+\begin{tabular}{ll}
+  \toprule
+  Componente & Versión / valor \\
+  \midrule
+  Portátil            & ASUS ROG Zephyrus G14 GA403UV \\
+  Sistema operativo   & CachyOS (base Arch Linux) \\
+  Entorno de escritorio & Omarchy (Hyprland + Wayland) \\
+  Kernel activo       & \texttt{linux-cachyos-lts} 6.18.31-1 \\
+  iGPU                & AMD Radeon RX 780M (HawkPoint) --- driver \texttt{amdgpu} \\
+  dGPU                & NVIDIA GeForce RTX 4060 Laptop (8\,GB) \\
+  Driver NVIDIA       & \texttt{nvidia-open-dkms} 580.95.05-1 \\
+  Chip Bluetooth      & MediaTek MT7922 (USB interno) \\
+  Firmware BT         & \texttt{linux-firmware} 20260410-1 (build \texttt{20260224103448}) \\
+  Gestor de arranque  & Limine 12.2.0 \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────────────────────────
+\section{Problema 1: Driver NVIDIA --- artefactos y compatibilidad de kernel}
+
+\subsection{Síntoma}
+
+Con el driver \texttt{nvidia-open-dkms} \textbf{595.71.05} instalado en el
+kernel \texttt{linux-cachyos} (rama~7.x), el juego
+\emph{The Last of Us Part~I} y otros títulos mostraban \textbf{artefactos
+visuales graves}: corrupciones de textura, píxeles errantes y parpadeos
+aleatorios que hacían el juego injugable.
+
+\subsection{Causa}
+
+La versión 595.71.05 de \texttt{nvidia-open} introdujo un bug de renderizado
+conocido que afecta a ciertos juegos bajo Wayland/PRIME Offload en
+combinación con la iGPU AMD. No se trataba de un problema de configuración
+sino de un defecto en el propio driver.
+
+\subsection{Solución: degradar a nvidia-open 580}
+
+Se degradó el driver a la versión \textbf{580.95.05-1}, que no presenta el
+bug:
+
+\begin{lstlisting}[style=bash]
+# Descargar la version anterior desde la cache de pacman o un mirror
+sudo pacman -U nvidia-open-dkms-580.95.05-1-x86_64.pkg.tar.zst \
+               nvidia-utils-580.95.05-1-x86_64.pkg.tar.zst \
+               lib32-nvidia-utils-580.95.05-1-x86_64.pkg.tar.zst
+\end{lstlisting}
+
+Para evitar que pacman actualice el driver automáticamente, añadir al fichero
+\texttt{/etc/pacman.conf}:
+
+\begin{lstlisting}[style=bash]
+IgnorePkg = nvidia-open-dkms nvidia-utils lib32-nvidia-utils
+\end{lstlisting}
+
+\subsection{Por qué el kernel LTS (6.18) y no el kernel 7.x}
+\label{sec:kernel-lts}
+
+El driver \texttt{nvidia-open} 580 \textbf{no compila} contra el kernel~7.x
+de CachyOS. El módulo DKMS falla durante la fase de \texttt{make} porque la
+API interna del kernel cambió entre las ramas~6.18 y~7.x en interfaces que
+el driver 580 utiliza directamente (gestión de memoria de vídeo, interfaz
+\texttt{drm}, etc.).
+
+El intento de construcción produce errores del tipo:
+
+\begin{lstlisting}[style=bash]
+# En /var/lib/dkms/nvidia/580.95.05/build/make.log:
+error: implicit declaration of function 'drm_...'
+error: unknown type name 'struct drm_...'
+\end{lstlisting}
+
+Como resultado, el módulo \texttt{nvidia.ko} no se genera y la dGPU queda
+inaccesible. La única versión de driver compatible con la dGPU RTX~4060 que
+compila correctamente en CachyOS en el momento de esta guía es la
+\textbf{595.x} (que tiene el bug de renderizado) o la \textbf{580.x} (que
+requiere el kernel LTS~6.18).
+
+La decisión fue: usar \textbf{nvidia-open 580 + kernel LTS 6.18}.
+
+\subsection{Establecer el kernel LTS como arranque predeterminado}
+
+CachyOS usa \textbf{Limine} como gestor de arranque. Para que
+\texttt{linux-cachyos-lts} sea la entrada predeterminada en cada arranque,
+editar \texttt{/etc/limine/limine.cfg} y colocar la entrada LTS en primera
+posición, o bien establecer \texttt{DEFAULT\_ENTRY} explícitamente:
+
+\begin{lstlisting}[style=bash]
+sudo nano /etc/limine/limine.cfg
+\end{lstlisting}
+
+Asegurarse de que la sección del kernel LTS aparece antes que cualquier otra
+entrada \texttt{:OS\_ENTRY:}. Limine arranca la primera entrada válida que
+encuentre. Verificar tras reiniciar:
+
+\begin{lstlisting}[style=bash]
+uname -r
+# Resultado esperado: 6.18.31-1-cachyos-lts
+\end{lstlisting}
+
+% ─────────────────────────────────────────────
+\section{Problema 2: Bluetooth MediaTek MT7922 --- fallo en cada arranque}
+
+\subsection{Síntoma}
+
+Tras cada arranque, el adaptador Bluetooth MT7922 fallaba al inicializarse.
+El kernel registraba el siguiente error en \texttt{dmesg}:
+
+\begin{lstlisting}[style=bash]
+Bluetooth: hci0: Failed to send wmt func ctrl (-22)
+\end{lstlisting}
+
+El código de error \texttt{-22} corresponde a \texttt{-EINVAL}. El Bluetooth
+era completamente inoperativo: \texttt{bluetoothctl} no mostraba ningún
+adaptador, y no era posible conectar ningún dispositivo.
+
+\subsection{Contexto del driver}
+
+El chip MT7922 es gestionado por los módulos \texttt{btmtk} y \texttt{btusb}
+del kernel. El fichero de firmware es:
+
+\begin{lstlisting}[style=bash]
+/lib/firmware/mediatek/BT_RAM_CODE_MT7922_1_1_hdr.bin.zst
+\end{lstlisting}
+
+La secuencia de arranque del driver es:
+\begin{enumerate}
+  \item Descarga del firmware al chip (\emph{firmware download}).
+  \item Envío del comando \textbf{FUNC\_CTRL enable}: activa el protocolo
+        Bluetooth en el firmware.
+  \item Verificación del estado: el driver lee la respuesta para confirmar
+        que el chip está activo.
+\end{enumerate}
+
+El fallo ocurría exactamente en el paso~2.
+
+\subsection{Análisis de la causa raíz}
+
+El protocolo de comunicación entre el driver y el firmware se denomina
+\textbf{WMT} (\emph{Wireless Module Testability}). Cada comando WMT espera
+una respuesta con una estructura concreta.
+
+Para el comando \texttt{FUNC\_CTRL} (activar Bluetooth), la respuesta
+esperada es la estructura \texttt{btmtk\_hci\_wmt\_evt\_funcc}, de
+\textbf{9~bytes}:
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  Campo & Tamaño & Descripción \\
+  \midrule
+  \texttt{hci\_event\_hdr} & 2\,B & Cabecera HCI (código de evento + longitud) \\
+  \texttt{btmtk\_wmt\_hdr} & 5\,B & Cabecera WMT (dir, op, dlen, flag) \\
+  \texttt{status}          & 2\,B & Estado del firmware (\texttt{0x0404} = activo) \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+El firmware con fecha de compilación \textbf{20260224103448} (febrero de
+2026, distribuido con \texttt{linux-firmware} 20260410-1) cambió su
+comportamiento: en respuesta al comando de activación, devuelve únicamente
+\textbf{7~bytes} --- la cabecera completa, pero \emph{sin} los 2~bytes de
+estado al final.
+
+El driver intenta extraer esos 2~bytes de estado con \texttt{skb\_pull\_data}:
+
+\begin{lstlisting}[style=c]
+case BTMTK_WMT_FUNC_CTRL:
+    if (!skb_pull_data(data->evt_skb,
+                       sizeof(wmt_evt_funcc->status))) {
+        err = -EINVAL;  /* falla: 0 bytes restantes */
+        goto err_free_skb;
+    }
+\end{lstlisting}
+
+Como el \emph{socket buffer} ya está vacío tras haber consumido la cabecera
+de 7~bytes, \texttt{skb\_pull\_data} devuelve \texttt{NULL}, la función
+retorna \texttt{-EINVAL}, y el driver registra el error.
+
+\textbf{Clave}: el firmware \emph{sí} procesa el comando y activa el
+Bluetooth. El cambio es únicamente en el formato de la respuesta. El error
+es del driver, no del firmware.
+
+\subsection{La función \texttt{btmtk\_usb\_func\_query}}
+
+El driver ya disponía de una función separada para \emph{consultar} el estado
+del Bluetooth sin activarlo, usando el flag~4 del comando FUNC\_CTRL:
+
+\begin{lstlisting}[style=c]
+static int btmtk_usb_func_query(struct hci_dev *hdev)
+{
+    struct btmtk_hci_wmt_params wmt_params;
+    int status, err;
+    u8 param = 0;
+
+    wmt_params.op   = BTMTK_WMT_FUNC_CTRL;
+    wmt_params.flag = 4;   /* consulta, no activacion */
+    wmt_params.dlen = sizeof(param);
+    wmt_params.data = &param;
+    wmt_params.status = &status;
+
+    err = btmtk_usb_hci_wmt_sync(hdev, &wmt_params);
+    if (err < 0) {
+        bt_dev_err(hdev, "Failed to query function status (%d)", err);
+        return err;
+    }
+    return status; /* BTMTK_WMT_ON_DONE = 5 si el BT esta activo */
+}
+\end{lstlisting}
+
+Esta consulta con flag~4 devuelve la respuesta completa de 9~bytes
+(incluyendo los bytes de estado) incluso con el firmware nuevo, por lo que
+funciona correctamente.
+
+\subsection{Solución: módulo DKMS \texttt{btmtk-fix}}
+
+Como el módulo \texttt{btmtk.ko} del kernel no puede modificarse directamente
+sin recompilar el kernel completo, se creó un módulo DKMS que reemplaza al
+original. Los módulos en \texttt{/updates/dkms/} tienen prioridad automática
+sobre los del kernel.
+
+\subsubsection{Estructura del módulo}
+
+\begin{lstlisting}[style=bash]
+/usr/src/btmtk-fix-1.0/
+    btmtk.c        # copia de drivers/bluetooth/btmtk.c con el parche
+    btmtk.h        # cabecera con BTMTK_FIRMWARE_DL_RETRY anadido
+    Makefile
+    dkms.conf
+\end{lstlisting}
+
+\textbf{Makefile}:
+\begin{lstlisting}[style=bash]
+obj-m := btmtk.o
+KDIR ?= /lib/modules/$(shell uname -r)/build
+all:
+        $(MAKE) -C $(KDIR) M=$(PWD) modules
+clean:
+        $(MAKE) -C $(KDIR) M=$(PWD) clean
+\end{lstlisting}
+
+\textbf{dkms.conf}:
+\begin{lstlisting}[style=bash]
+PACKAGE_NAME="btmtk-fix"
+PACKAGE_VERSION="1.0"
+BUILT_MODULE_NAME[0]="btmtk"
+DEST_MODULE_LOCATION[0]="/updates/dkms"
+AUTOINSTALL="yes"
+\end{lstlisting}
+
+\subsubsection{El parche aplicado}
+
+En \texttt{btmtk.h}, se añadió la constante de flag necesaria para el
+mecanismo de reintento:
+
+\begin{lstlisting}[style=c]
+enum {
+    /* ... constantes existentes ... */
+    BTMTK_ISOPKT_RUNNING,
+    BTMTK_FIRMWARE_DL_RETRY,   /* anadido: indica reintento en curso */
+};
+\end{lstlisting}
+
+En \texttt{btmtk.c}, dentro de \texttt{btmtk\_usb\_setup}, tras el envío del
+comando de activación para los chips MT7922/7925/7961, se añadió el bloque
+de recuperación cuando la respuesta es \texttt{-EINVAL}:
+
+\begin{lstlisting}[style=c]
+err = btmtk_usb_hci_wmt_sync(hdev, &wmt_params);
+if (err == -EINVAL) {
+    /* El firmware nuevo (feb 2026+) no incluye bytes de estado en
+     * la respuesta FUNC_CTRL enable. En su lugar, consultar el
+     * estado via polling, tolerando -EINVAL mientras el firmware
+     * termina de inicializarse tras una carga en frio (hasta ~2s).
+     */
+    int qstatus;
+
+    err = readx_poll_timeout(btmtk_usb_func_query, hdev, qstatus,
+                             qstatus != -EINVAL &&
+                             qstatus != BTMTK_WMT_ON_PROGRESS,
+                             100000, 3000000);
+    if (!err) {
+        if (qstatus == BTMTK_WMT_ON_DONE)
+            err = 0;
+        else
+            err = (qstatus < 0) ? qstatus : -EIO;
+    }
+    bt_dev_info(hdev, "FUNC_CTRL status poll: err=%d qstatus=%d",
+                err, qstatus);
+}
+if (err < 0) {
+    if (!test_and_set_bit(BTMTK_FIRMWARE_DL_RETRY, &btmtk_data->flags))
+        btmtk_reset_sync(hdev);
+    bt_dev_err(hdev, "Failed to send wmt func ctrl (%d)", err);
+    return err;
+}
+\end{lstlisting}
+
+La macro \texttt{readx\_poll\_timeout} (de \texttt{<linux/iopoll.h>}) llama
+a \texttt{btmtk\_usb\_func\_query} repetidamente cada 100\,ms durante un
+máximo de 3\,s. La condición de salida es que la respuesta no sea
+\texttt{-EINVAL} (firmware aún inicializándose) ni
+\texttt{BTMTK\_WMT\_ON\_PROGRESS} (carga en curso). Cuando la respuesta es
+\texttt{BTMTK\_WMT\_ON\_DONE}~(=5), el Bluetooth está activo y el setup
+continúa con éxito.
+
+\subsubsection{Comandos de construcción e instalación}
+
+\begin{lstlisting}[style=bash]
+# Registrar el modulo en DKMS
+sudo dkms add /usr/src/btmtk-fix-1.0
+
+# Compilar para el kernel activo
+sudo dkms build btmtk-fix/1.0 -k 6.18.31-1-cachyos-lts
+
+# Instalar (copia el .ko.zst a /updates/dkms/, tiene prioridad)
+sudo dkms install btmtk-fix/1.0 -k 6.18.31-1-cachyos-lts
+\end{lstlisting}
+
+Para reconstruir desde cero si es necesario:
+
+\begin{lstlisting}[style=bash]
+sudo dkms remove btmtk-fix/1.0 --all
+sudo dkms add /usr/src/btmtk-fix-1.0
+sudo dkms build  btmtk-fix/1.0 -k 6.18.31-1-cachyos-lts
+sudo dkms install btmtk-fix/1.0 -k 6.18.31-1-cachyos-lts
+\end{lstlisting}
+
+El módulo queda instalado en:
+\begin{lstlisting}[style=bash]
+/lib/modules/6.18.31-1-cachyos-lts/updates/dkms/btmtk.ko.zst
+\end{lstlisting}
+
+El módulo original del kernel queda en:
+\begin{lstlisting}[style=bash]
+/lib/modules/6.18.31-1-cachyos-lts/kernel/drivers/bluetooth/btmtk.ko.zst
+\end{lstlisting}
+
+\subsection{Verificación}
+
+Recargar el módulo y comprobar \texttt{dmesg}:
+
+\begin{lstlisting}[style=bash]
+sudo modprobe -r btusb btmtk
+sudo dmesg -C
+sudo modprobe btusb
+sleep 4
+sudo dmesg | grep -iE "hci0.*(HW.SW|FUNC_CTRL|poll|device setup|AOSP|failed)"
+\end{lstlisting}
+
+Salida esperada (fallo \textbf{ausente}, setup correcto):
+
+\begin{lstlisting}[style=bash]
+Bluetooth: hci0: HW/SW Version: 0x008a008a, Build Time: 20260224103448
+Bluetooth: hci0: FUNC_CTRL status poll: err=0 qstatus=5
+Bluetooth: hci0: Device setup in 125819 usecs
+Bluetooth: hci0: AOSP extensions version v1.00
+Bluetooth: hci0: AOSP quality report is supported
+\end{lstlisting}
+
+La línea \texttt{FUNC\_CTRL status poll: err=0 qstatus=5} confirma que el
+parche está activo y que el polling detectó correctamente el estado
+\texttt{ON\_DONE} del firmware.
+
+% ─────────────────────────────────────────────
+\section{Notas de mantenimiento}
+
+\subsection{Si se actualiza el kernel LTS}
+
+DKMS recompila automáticamente el módulo \texttt{btmtk-fix} para cada nuevo
+kernel gracias a \texttt{AUTOINSTALL="yes"} en \texttt{dkms.conf}. Si la
+compilación falla por cambios de API en el kernel, el log de error se
+encuentra en:
+
+\begin{lstlisting}[style=bash]
+/var/lib/dkms/btmtk-fix/1.0/build/make.log
+\end{lstlisting}
+
+\subsection{Si se actualiza linux-firmware}
+
+El parche es compatible con versiones futuras del firmware. Si el firmware
+vuelve a incluir los bytes de estado en la respuesta FUNC\_CTRL, \texttt{err}
+valdrá 0 (no \texttt{-EINVAL}) y el bloque de polling no se ejecutará. El
+comportamiento es retrocompatible.
+
+\subsection{Si se actualiza nvidia-open-dkms}
+
+Antes de actualizar el driver NVIDIA, verificar que la nueva versión compila
+contra el kernel LTS~6.18. Consultar el \emph{changelog} del paquete en AUR
+o en los foros de CachyOS. Si la nueva versión exige el kernel 7.x, mantener
+el \texttt{IgnorePkg} en \texttt{pacman.conf} hasta disponer de un driver
+compatible.
+
+\subsection{Verificar el estado en cada arranque}
+
+Para confirmar que ambos componentes funcionan tras un reinicio:
+
+\begin{lstlisting}[style=bash]
+# Kernel activo (debe ser 6.18.x-cachyos-lts)
+uname -r
+
+# Modulo NVIDIA cargado
+lsmod | grep nvidia
+
+# Bluetooth activo (debe mostrar el adaptador)
+bluetoothctl show | grep -E "Name|Powered|Discovering"
+
+# Sin errores de BT en dmesg
+sudo dmesg | grep -i "bluetooth.*failed"
+\end{lstlisting}
+
+\end{document}

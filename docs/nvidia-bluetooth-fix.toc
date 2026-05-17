@@ -1,0 +1,24 @@
+\babel@toc {spanish}{}\relax 
+\contentsline {section}{\numberline {1}Introducción}{2}{section.1}%
+\contentsline {section}{\numberline {2}Entorno del sistema}{2}{section.2}%
+\contentsline {section}{\numberline {3}Problema 1: Driver NVIDIA --- artefactos y compatibilidad de kernel}{2}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Síntoma}{2}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Causa}{3}{subsection.3.2}%
+\contentsline {subsection}{\numberline {3.3}Solución: degradar a nvidia-open 580}{3}{subsection.3.3}%
+\contentsline {subsection}{\numberline {3.4}Por qué el kernel LTS (6.18) y no el kernel 7.x}{3}{subsection.3.4}%
+\contentsline {subsection}{\numberline {3.5}Establecer el kernel LTS como arranque predeterminado}{3}{subsection.3.5}%
+\contentsline {section}{\numberline {4}Problema 2: Bluetooth MediaTek MT7922 --- fallo en cada arranque}{4}{section.4}%
+\contentsline {subsection}{\numberline {4.1}Síntoma}{4}{subsection.4.1}%
+\contentsline {subsection}{\numberline {4.2}Contexto del driver}{4}{subsection.4.2}%
+\contentsline {subsection}{\numberline {4.3}Análisis de la causa raíz}{4}{subsection.4.3}%
+\contentsline {subsection}{\numberline {4.4}La función \texttt {btmtk\_usb\_func\_query}}{5}{subsection.4.4}%
+\contentsline {subsection}{\numberline {4.5}Solución: módulo DKMS \texttt {btmtk-fix}}{6}{subsection.4.5}%
+\contentsline {subsubsection}{\numberline {4.5.1}Estructura del módulo}{6}{subsubsection.4.5.1}%
+\contentsline {subsubsection}{\numberline {4.5.2}El parche aplicado}{6}{subsubsection.4.5.2}%
+\contentsline {subsubsection}{\numberline {4.5.3}Comandos de construcción e instalación}{7}{subsubsection.4.5.3}%
+\contentsline {subsection}{\numberline {4.6}Verificación}{8}{subsection.4.6}%
+\contentsline {section}{\numberline {5}Notas de mantenimiento}{8}{section.5}%
+\contentsline {subsection}{\numberline {5.1}Si se actualiza el kernel LTS}{8}{subsection.5.1}%
+\contentsline {subsection}{\numberline {5.2}Si se actualiza linux-firmware}{9}{subsection.5.2}%
+\contentsline {subsection}{\numberline {5.3}Si se actualiza nvidia-open-dkms}{9}{subsection.5.3}%
+\contentsline {subsection}{\numberline {5.4}Verificar el estado en cada arranque}{9}{subsection.5.4}%
