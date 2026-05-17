@@ -1,0 +1,358 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue!70!black,
+}
+
+\lstdefinestyle{bash}{
+  language=bash,
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{gray!10},
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+}
+
+\title{%
+  \textbf{Instalación de nvidia-open 580}\\[0.4em]
+  \large Degradación desde 595 y compatibilidad con el kernel LTS en\\
+  ASUS ROG Zephyrus G14 GA403UV con CachyOS
+}
+\author{pc-config}
+\date{Mayo de 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────
+\section{Contexto}
+
+El equipo es un \textbf{ASUS ROG Zephyrus G14 GA403UV} con \textbf{CachyOS}
+(base Arch Linux) y el entorno \textbf{Omarchy} (Hyprland + Wayland). Cuenta
+con configuración de GPU dual:
+
+\begin{itemize}
+  \item \textbf{iGPU}: AMD Radeon RX~780M (HawkPoint) --- driver
+        \texttt{amdgpu}, conectada directamente al panel.
+  \item \textbf{dGPU}: NVIDIA GeForce RTX 4060 Laptop (8\,GB VRAM) ---
+        driver \texttt{nvidia-open}, arquitectura PRIME Offload.
+\end{itemize}
+
+CachyOS distribuye \texttt{nvidia-open-dkms} en el repositorio
+\texttt{extra}. En el momento de este procedimiento, la versión disponible
+era la \textbf{595.71.05-2} (instalada inicialmente como 595.71.05-1 y
+actualizada a -2). Esta versión presentaba un bug crítico de renderizado y,
+además, era la única compatible con el kernel~7.x. La versión anterior,
+\textbf{580.95.05-1}, no tiene el bug, pero requiere el kernel LTS~6.18.
+
+% ─────────────────────────────────────────────
+\section{Problema con nvidia-open 595: artefactos visuales}
+
+\subsection{Síntoma}
+
+Con \texttt{nvidia-open-dkms} 595.71.05 instalado, ciertos juegos como
+\emph{The Last of Us Part~I} mostraban \textbf{artefactos visuales graves}
+al ejecutarse con PRIME Offload sobre Wayland: corrupciones de textura,
+franjas de píxeles incorrectos y parpadeos aleatorios que hacían los juegos
+injugables.
+
+El problema era reproducible con cualquier configuración de lanzamiento
+(\texttt{prime-run}, \texttt{\_\_NV\_PRIME\_RENDER\_OFFLOAD=1}) y no
+desaparecía ajustando parámetros del compositor ni del driver.
+
+\subsection{Causa}
+
+Se trata de un bug conocido de renderizado introducido en la serie 595 del
+driver \texttt{nvidia-open} bajo Wayland con iGPU AMD en PRIME Offload. No
+hay solución de configuración: la única alternativa es usar una versión del
+driver sin el bug.
+
+% ─────────────────────────────────────────────
+\section{Por qué nvidia-open 580 requiere el kernel LTS}
+
+Al intentar instalar \texttt{nvidia-open-dkms} 580 con los kernels
+\textbf{7.0.8-1-cachyos} y \textbf{7.0.8-arch1-1} presentes en el sistema,
+el módulo DKMS falla durante la compilación con dos errores de API del
+kernel:
+
+\begin{lstlisting}[style=bash]
+# /var/lib/dkms/nvidia/580.95.05/build/make.log
+error: cannot assign to non-static data member 'vm_flags' with
+       const-qualified type 'const vm_flags_t'
+error: call to undeclared function 'phys_to_dma'
+\end{lstlisting}
+
+\begin{itemize}
+  \item \textbf{\texttt{vm\_flags}}: en kernel 7.x se cambió a un campo de
+        solo lectura (\texttt{const vm\_flags\_t}). El driver 580 lo
+        modifica directamente, lo que ya no está permitido.
+  \item \textbf{\texttt{phys\_to\_dma}}: función eliminada o movida en
+        kernel 7.x; el driver 580 la llama sin declaración previa.
+\end{itemize}
+
+DKMS registra el intento en el log de pacman:
+
+\begin{lstlisting}[style=bash]
+==> dkms install --no-depmod nvidia/580.95.05 -k 7.0.8-arch1-1
+==> WARNING: `dkms install --no-depmod nvidia/580.95.05
+             -k 7.0.8-arch1-1' exited 10
+\end{lstlisting}
+
+En cambio, con \textbf{linux-cachyos-lts} (6.18.x) la compilación termina
+correctamente y el módulo queda instalado en:
+
+\begin{lstlisting}[style=bash]
+/lib/modules/6.18.31-1-cachyos-lts/updates/dkms/nvidia.ko.zst
+\end{lstlisting}
+
+La solución pasa por arrancar exclusivamente en el kernel LTS.
+
+% ─────────────────────────────────────────────
+\section{Obtención de los paquetes 580}
+
+La versión 580 ya no está disponible en los repositorios activos de CachyOS.
+Los paquetes deben descargarse del \textbf{Arch Linux Archive}, que conserva
+versiones históricas de todos los paquetes del repositorio \texttt{extra}:
+
+\begin{center}
+\url{https://archive.archlinux.org/packages/}
+\end{center}
+
+Los paquetes necesarios y sus rutas en el archivo son:
+
+\begin{center}
+\begin{tabular}{ll}
+  \toprule
+  Paquete & Ruta en el archivo \\
+  \midrule
+  \texttt{nvidia-open-dkms} &
+    \texttt{/n/nvidia-open-dkms/nvidia-open-dkms-580.95.05-1-x86\_64.pkg.tar.zst} \\
+  \texttt{nvidia-utils} &
+    \texttt{/n/nvidia-utils/nvidia-utils-580.95.05-1-x86\_64.pkg.tar.zst} \\
+  \texttt{lib32-nvidia-utils} &
+    \texttt{/l/lib32-nvidia-utils/lib32-nvidia-utils-580.95.05-1-x86\_64.pkg.tar.zst} \\
+  \texttt{nvidia-settings} &
+    \texttt{/n/nvidia-settings/nvidia-settings-580.95.05-1-x86\_64.pkg.tar.zst} \\
+  \texttt{opencl-nvidia} &
+    \texttt{/o/opencl-nvidia/opencl-nvidia-580.95.05-1-x86\_64.pkg.tar.zst} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+Descargar los cinco paquetes en un directorio de trabajo:
+
+\begin{lstlisting}[style=bash]
+mkdir ~/nvidia-580 && cd ~/nvidia-580
+BASE="https://archive.archlinux.org/packages"
+
+curl -LO "$BASE/n/nvidia-open-dkms/nvidia-open-dkms-580.95.05-1-x86_64.pkg.tar.zst"
+curl -LO "$BASE/n/nvidia-utils/nvidia-utils-580.95.05-1-x86_64.pkg.tar.zst"
+curl -LO "$BASE/l/lib32-nvidia-utils/lib32-nvidia-utils-580.95.05-1-x86_64.pkg.tar.zst"
+curl -LO "$BASE/n/nvidia-settings/nvidia-settings-580.95.05-1-x86_64.pkg.tar.zst"
+curl -LO "$BASE/o/opencl-nvidia/opencl-nvidia-580.95.05-1-x86_64.pkg.tar.zst"
+\end{lstlisting}
+
+% ─────────────────────────────────────────────
+\section{Procedimiento de instalación}
+
+\subsection{Paso previo: arrancar en el kernel LTS}
+
+El paquete \texttt{nvidia-open-dkms} ejecuta DKMS en el
+\emph{post-install hook} de pacman para todos los kernels presentes en el
+sistema. Si el kernel 7.x está instalado, DKMS intentará compilar para él
+y fallará (salida 10), aunque el proceso continúa para el kernel LTS. Para
+evitar ruido en el log y asegurarse de que el sistema activo es el LTS:
+
+\begin{enumerate}
+  \item Asegurarse de arrancar con \texttt{linux-cachyos-lts}.
+  \item Opcionalmente, desinstalar \texttt{linux-cachyos} y
+        \texttt{linux-cachyos-headers} si no se van a necesitar,
+        para que DKMS solo construya para el kernel LTS.
+\end{enumerate}
+
+\subsection{Instalación de los paquetes locales}
+
+Instalar los cinco paquetes en un solo comando para que pacman resuelva
+correctamente las dependencias internas entre ellos:
+
+\begin{lstlisting}[style=bash]
+cd ~/nvidia-580
+sudo pacman -U --noconfirm \
+    nvidia-open-dkms-580.95.05-1-x86_64.pkg.tar.zst \
+    nvidia-utils-580.95.05-1-x86_64.pkg.tar.zst \
+    lib32-nvidia-utils-580.95.05-1-x86_64.pkg.tar.zst \
+    nvidia-settings-580.95.05-1-x86_64.pkg.tar.zst \
+    opencl-nvidia-580.95.05-1-x86_64.pkg.tar.zst
+\end{lstlisting}
+
+Durante el hook de pacman se verá:
+
+\begin{lstlisting}[style=bash]
+==> dkms install --no-depmod nvidia/580.95.05 -k 6.18.31-1-cachyos-lts
+\end{lstlisting}
+
+Si el kernel~7.x sigue instalado, aparecerán también los intentos fallidos
+para él. Esto es normal y no impide el funcionamiento en el LTS.
+
+\subsection{Verificar que el módulo quedó instalado}
+
+\begin{lstlisting}[style=bash]
+sudo dkms status nvidia
+# nvidia/580.95.05, 6.18.31-1-cachyos-lts, x86_64: installed
+
+ls /lib/modules/6.18.31-1-cachyos-lts/updates/dkms/ | grep nvidia
+# nvidia.ko.zst  nvidia-drm.ko.zst  nvidia-modeset.ko.zst
+# nvidia-peermem.ko.zst  nvidia-uvm.ko.zst
+\end{lstlisting}
+
+% ─────────────────────────────────────────────
+\section{Establecer el kernel LTS como arranque predeterminado}
+
+CachyOS usa \textbf{Limine} como gestor de arranque. Para que
+\texttt{linux-cachyos-lts} sea la entrada predeterminada:
+
+\begin{lstlisting}[style=bash]
+sudo nano /etc/limine/limine.cfg
+\end{lstlisting}
+
+Mover la sección del kernel LTS al \textbf{primer lugar} en el fichero.
+Limine arranca automáticamente la primera entrada válida. Verificar tras
+reiniciar:
+
+\begin{lstlisting}[style=bash]
+uname -r
+# 6.18.31-1-cachyos-lts
+\end{lstlisting}
+
+% ─────────────────────────────────────────────
+\section{Congelar la versión del driver}
+
+Para que \texttt{pacman -Syu} no vuelva a actualizar \texttt{nvidia-open}
+a la versión 595 automáticamente, añadir los paquetes a \texttt{IgnorePkg}
+en \texttt{/etc/pacman.conf}:
+
+\begin{lstlisting}[style=bash]
+sudo nano /etc/pacman.conf
+\end{lstlisting}
+
+Localizar la línea \texttt{IgnorePkg} (o añadirla si no existe) y dejarla
+así:
+
+\begin{lstlisting}[style=bash]
+IgnorePkg = nvidia-open-dkms nvidia-utils lib32-nvidia-utils \
+            nvidia-settings opencl-nvidia
+\end{lstlisting}
+
+A partir de ahora, \texttt{pacman -Syu} mostrará un aviso indicando que
+estos paquetes están ignorados y no los actualizará.
+
+% ─────────────────────────────────────────────
+\section{Verificación del driver}
+
+Cargar el módulo y comprobar que la GPU es reconocida:
+
+\begin{lstlisting}[style=bash]
+# Modulo cargado
+lsmod | grep "^nvidia "
+
+# GPU detectada por el driver
+nvidia-smi --query-gpu=name,driver_version --format=csv,noheader
+# NVIDIA GeForce RTX 4060 Laptop GPU, 580.95.05
+
+# Verificar PRIME Offload
+prime-run glxinfo | grep "OpenGL renderer"
+# OpenGL renderer string: NVIDIA GeForce RTX 4060 Laptop GPU/PCIe/SSE2
+\end{lstlisting}
+
+Para confirmar que los artefactos han desaparecido, lanzar el juego
+afectado con:
+
+\begin{lstlisting}[style=bash]
+prime-run %command%
+\end{lstlisting}
+
+% ─────────────────────────────────────────────
+\section{Estado final de paquetes}
+
+Tras el procedimiento, el estado de los paquetes NVIDIA es el siguiente:
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  Paquete & Versión instalada & Nota \\
+  \midrule
+  \texttt{nvidia-open-dkms}   & 580.95.05-1 & Driver principal (DKMS) \\
+  \texttt{nvidia-utils}       & 580.95.05-1 & Utilidades y librerías \\
+  \texttt{lib32-nvidia-utils} & 580.95.05-1 & Soporte 32\,bits \\
+  \texttt{nvidia-settings}    & 580.95.05-1 & Panel de configuración \\
+  \texttt{opencl-nvidia}      & 580.95.05-1 & OpenCL 64\,bits \\
+  \texttt{lib32-opencl-nvidia}& 595.71.05-1 & OpenCL 32\,bits (sin degradar) \\
+  \texttt{libva-nvidia-driver}& 0.0.17-1    & Aceleración de vídeo VA-API \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+El paquete \texttt{lib32-opencl-nvidia} quedó en la versión 595 por no haber
+sido incluido en el comando de degradación. Para los casos de uso habituales
+(juegos, renderizado, Wayland) esto no tiene impacto funcional.
+
+% ─────────────────────────────────────────────
+\section{Notas de mantenimiento}
+
+\subsection{Cuándo actualizar el driver}
+
+Antes de quitar cualquier paquete de \texttt{IgnorePkg} y actualizar a una
+versión más reciente de \texttt{nvidia-open}, verificar en los foros de
+CachyOS o en los \emph{release notes} de NVIDIA que:
+
+\begin{enumerate}
+  \item El bug de artefactos bajo Wayland/PRIME ha sido corregido.
+  \item La nueva versión compila contra el kernel LTS activo (6.18.x) o,
+        en su defecto, contra el nuevo kernel que se use.
+\end{enumerate}
+
+\subsection{Si se actualiza el kernel LTS}
+
+DKMS recompilará automáticamente \texttt{nvidia/580.95.05} para el nuevo
+kernel gracias a \texttt{AUTOINSTALL="yes"} en su \texttt{dkms.conf}. Si la
+nueva versión del kernel LTS introduce cambios de API incompatibles con el
+driver 580, el proceso fallará y el log estará en:
+
+\begin{lstlisting}[style=bash]
+/var/lib/dkms/nvidia/580.95.05/build/make.log
+\end{lstlisting}
+
+En ese caso habrá que valorar actualizar a una versión del driver que
+compile en el nuevo kernel y no tenga el bug de artefactos.
+
+\subsection{Restaurar la versión 595}
+
+Si en el futuro se desea volver a la versión actual del repositorio:
+
+\begin{lstlisting}[style=bash]
+# 1. Eliminar las entradas de IgnorePkg en /etc/pacman.conf
+# 2. Actualizar
+sudo pacman -Syu nvidia-open-dkms nvidia-utils lib32-nvidia-utils \
+                 nvidia-settings opencl-nvidia lib32-opencl-nvidia
+\end{lstlisting}
+
+\end{document}
