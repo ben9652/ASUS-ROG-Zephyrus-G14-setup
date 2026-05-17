@@ -22,6 +22,32 @@ BINDIR="$HOME/.local/bin"
 HYPR_BINDINGS="$HOME/.config/hypr/bindings.conf"
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
 
+warn() {
+    echo "  [WARN] $*"
+}
+
+run_user_systemctl() {
+    local target_user="${SUDO_USER:-}"
+    if [[ -n "$target_user" ]]; then
+        local target_uid runtime_dir bus_addr
+        target_uid="$(id -u "$target_user")"
+        runtime_dir="/run/user/$target_uid"
+        bus_addr="unix:path=$runtime_dir/bus"
+
+        if [[ ! -S "$runtime_dir/bus" ]]; then
+            warn "No hay bus de usuario activo para '$target_user' en $runtime_dir/bus."
+            return 1
+        fi
+
+        sudo -u "$target_user" \
+            XDG_RUNTIME_DIR="$runtime_dir" \
+            DBUS_SESSION_BUS_ADDRESS="$bus_addr" \
+            systemctl --user "$@"
+    else
+        systemctl --user "$@"
+    fi
+}
+
 mkdir -p "$BINDIR" "$SYSTEMD_USER_DIR"
 
 # ── 1. Script power-profile-cycle ─────────────────────────────────────────────
@@ -104,9 +130,12 @@ RestartSec=3
 [Install]
 WantedBy=graphical-session.target
 EOF
-systemctl --user daemon-reload
-systemctl --user enable display-hz-sync.service
-echo "  ✓ display-hz-sync.service habilitado"
+if run_user_systemctl daemon-reload && run_user_systemctl enable display-hz-sync.service; then
+    echo "  ✓ display-hz-sync.service habilitado"
+else
+    warn "No se pudo habilitar display-hz-sync.service ahora mismo."
+    warn "Inicia sesión gráfica y ejecuta: systemctl --user daemon-reload && systemctl --user enable --now display-hz-sync.service"
+fi
 
 # ── 4. Udev rule: auto-switch power profile on AC plug/unplug ─────────────────
 if [[ -w /etc/udev/rules.d ]]; then
