@@ -1,0 +1,457 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listingsutf8}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage{mdframed}
+\usepackage{amssymb}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue!70!black,
+}
+
+\lstdefinestyle{bash}{
+  language=bash,
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{gray!10},
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+  inputencoding=utf8,
+  extendedchars=true,
+}
+
+% Caja de advertencia
+\newmdenv[
+  linecolor=red!60!black,
+  backgroundcolor=red!5,
+  linewidth=1.5pt,
+  topline=true, bottomline=true, leftline=true, rightline=true,
+  innerleftmargin=8pt, innerrightmargin=8pt,
+  innertopmargin=6pt, innerbottommargin=6pt,
+]{advertencia}
+
+% Caja informativa
+\newmdenv[
+  linecolor=blue!50!black,
+  backgroundcolor=blue!5,
+  linewidth=1pt,
+  innerleftmargin=8pt, innerrightmargin=8pt,
+  innertopmargin=6pt, innerbottommargin=6pt,
+]{nota}
+
+\title{%
+  \textbf{Guía de reinstalación: CachyOS + Omarchy}\\[0.4em]
+  \large Configuración post-instalación para TLOU Part~I y Bluetooth\\
+  ASUS ROG Zephyrus G14 GA403UV
+}
+\author{pc-config}
+\date{Mayo de 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Contexto del hardware}
+
+\begin{itemize}
+  \item \textbf{Modelo}: ASUS ROG Zephyrus G14 GA403UV
+  \item \textbf{iGPU}: AMD Radeon RX 780M (HawkPoint) --- driver \texttt{amdgpu},
+        conectada directamente al panel interno.
+  \item \textbf{dGPU}: NVIDIA GeForce RTX 4060 Laptop (8\,GB VRAM, Ada Lovelace
+        AD107) --- driver \texttt{nvidia-open}, modo PRIME Offload.
+  \item \textbf{Bluetooth/Wi-Fi}: MediaTek MT7922 --- chipset combinado,
+        requiere parche DKMS para funcionar correctamente.
+\end{itemize}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{La regla más importante: versiones de NVIDIA}
+
+\begin{advertencia}
+\textbf{NUNCA actualizar los paquetes de userspace de NVIDIA más allá de 580.x.}
+La versión 595 del Vulkan ICD (\texttt{nvidia-utils}) provoca artefactos de
+renderizado severos en \emph{The Last of Us Part~I}: bloques en rejilla sobre
+los modelos de personajes, humo roto y vegetación corrupta. Este comportamiento
+es reproducible e inaceptable.
+\end{advertencia}
+
+La combinación correcta y verificada es:
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+\textbf{Paquete} & \textbf{Versión} & \textbf{Motivo} \\
+\midrule
+\texttt{nvidia-open-dkms} & 595.x & Corrige el bug CrashCAT (GSP queue overflow) \\
+\texttt{nvidia-utils} & 580.x & El ICD 595 causa artefactos visuales \\
+\texttt{lib32-nvidia-utils} & 580.x & Ídem \\
+\texttt{nvidia-settings} & 580.x & Ídem \\
+\texttt{opencl-nvidia} & 580.x & Ídem \\
+\texttt{lib32-opencl-nvidia} & 580.x & Ídem \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+El módulo del kernel al 595 y el userspace al 580 generan mensajes de
+``API mismatch'' en \texttt{dmesg}, pero Vulkan funciona correctamente para
+gaming. Este split está verificado con una sesión de más de 20 minutos en TLOU.
+
+\begin{nota}
+\textbf{¿Por qué el kernel necesita 595?}
+El driver 580 tiene un bug en el firmware GSP que provoca un desbordamiento
+en \texttt{crashcat\_queue\_v1.c:66} bajo carga de compilación de shaders.
+Esto causa un cuelgue o crash del juego a los pocos minutos. La versión 595
+del módulo del kernel corrige este bug.
+\end{nota}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Pasos antes de instalar Omarchy}
+
+Realizar estos pasos con el sistema base de CachyOS ya instalado y con
+acceso a internet, \textbf{antes} de ejecutar el instalador de Omarchy.
+
+% ──────────────────────────────────────────
+\subsection{Paso 1: Bloquear el userspace de NVIDIA en pacman}
+
+Editar \texttt{/etc/pacman.conf} e insertar o completar la línea
+\texttt{IgnorePkg} \textbf{antes de instalar ningún paquete de NVIDIA}:
+
+\begin{lstlisting}[style=bash]
+sudo nano /etc/pacman.conf
+\end{lstlisting}
+
+Buscar la línea \texttt{IgnorePkg} (puede estar comentada con \texttt{\#}).
+Descomentarla y dejarla así:
+
+\begin{lstlisting}[style=bash]
+IgnorePkg = nvidia-utils lib32-nvidia-utils nvidia-settings \
+            opencl-nvidia lib32-opencl-nvidia
+\end{lstlisting}
+
+\textbf{No} incluir \texttt{nvidia-open-dkms} en esta lista.
+
+% ──────────────────────────────────────────
+\subsection{Paso 2: Instalar los drivers de NVIDIA con chwd}
+
+\begin{lstlisting}[style=bash]
+sudo chwd -a
+\end{lstlisting}
+
+Esto instalará \texttt{nvidia-open-dkms} y \texttt{nvidia-utils} a la versión
+más reciente disponible en los repos de CachyOS (actualmente 595.x para ambos).
+
+\begin{nota}
+Si \texttt{chwd} ya fue ejecutado durante la instalación de CachyOS y los
+drivers ya están presentes, omitir este paso y continuar con el Paso~3.
+\end{nota}
+
+% ──────────────────────────────────────────
+\subsection{Paso 3: Degradar el userspace a 580}
+
+Instalar la herramienta \texttt{downgrade}:
+
+\begin{lstlisting}[style=bash]
+sudo pacman -S downgrade
+\end{lstlisting}
+
+Degradar cada paquete del userspace. El comando mostrará una lista de
+versiones disponibles; seleccionar \textbf{580.95.05-1} en cada caso:
+
+\begin{lstlisting}[style=bash]
+sudo downgrade nvidia-utils
+sudo downgrade lib32-nvidia-utils
+sudo downgrade nvidia-settings
+sudo downgrade opencl-nvidia
+sudo downgrade lib32-opencl-nvidia
+\end{lstlisting}
+
+Verificar que el resultado sea correcto:
+
+\begin{lstlisting}[style=bash]
+pacman -Q nvidia-open-dkms nvidia-utils lib32-nvidia-utils \
+           nvidia-settings opencl-nvidia lib32-opencl-nvidia
+\end{lstlisting}
+
+Salida esperada (puede haber variación menor en el número de compilación):
+
+\begin{lstlisting}
+nvidia-open-dkms      595.71.05-2
+nvidia-utils          580.95.05-1
+lib32-nvidia-utils    580.95.05-1
+nvidia-settings       580.95.05-1
+opencl-nvidia         580.95.05-1
+lib32-opencl-nvidia   580.95.05-1
+\end{lstlisting}
+
+% ──────────────────────────────────────────
+\subsection{Paso 4: Restaurar el firmware GSP 595}
+
+Al degradar \texttt{nvidia-utils} de 595 a 580, pacman elimina los archivos
+de firmware \texttt{nvidia/595.71.05/gsp\_ga10x.bin} y
+\texttt{nvidia/595.71.05/gsp\_tu10x.bin}. El módulo del kernel 595 los necesita
+para inicializar la GPU. Hay que extraerlos del paquete que quedó en la caché.
+
+\begin{lstlisting}[style=bash]
+# Verificar que el paquete de nvidia-utils 595 este en cache
+ls /var/cache/pacman/pkg/nvidia-utils-595*
+
+# Extraer el firmware a un directorio temporal
+TMPDIR=$(mktemp -d)
+bsdtar -xf /var/cache/pacman/pkg/nvidia-utils-595.71.05-*-x86_64.pkg.tar.zst \
+       -C "$TMPDIR" usr/lib/firmware/nvidia/595.71.05/
+
+# Copiar al destino definitivo
+sudo mkdir -p /usr/lib/firmware/nvidia/
+sudo cp -r "$TMPDIR/usr/lib/firmware/nvidia/595.71.05" \
+           /usr/lib/firmware/nvidia/
+rm -rf "$TMPDIR"
+
+# Verificar
+ls -lh /usr/lib/firmware/nvidia/595.71.05/
+\end{lstlisting}
+
+La salida debe mostrar dos archivos:
+\begin{lstlisting}
+gsp_ga10x.bin   ~73 MB
+gsp_tu10x.bin   ~30 MB
+\end{lstlisting}
+
+\begin{nota}
+Si el paquete \textbf{no está en caché} (por ejemplo, en una instalación
+limpia donde \texttt{chwd} descargó 595 pero la caché fue limpiada),
+descargarlo sin instalarlo:
+\begin{lstlisting}[style=bash]
+sudo pacman -Sw --nodeps nvidia-utils   # descarga sin instalar
+\end{lstlisting}
+Luego repetir el bloque de extracción anterior.
+\end{nota}
+
+% ──────────────────────────────────────────
+\subsection{Paso 5: Reconstruir la imagen UKI / initramfs}
+
+Con el firmware ya en disco, regenerar las imágenes del kernel para que
+el firmware quede embebido en el UKI y esté disponible en el arranque
+temprano (antes de montar el sistema de ficheros raíz):
+
+\begin{lstlisting}[style=bash]
+sudo mkinitcpio -P
+\end{lstlisting}
+
+Cuando termine (tarda 2--5 minutos), verificar que el firmware está en el UKI:
+
+\begin{lstlisting}[style=bash]
+sudo lsinitcpio /boot/EFI/Linux/omarchy_linux.efi 2>/dev/null \
+     | grep "nvidia/595"
+\end{lstlisting}
+
+Salida esperada:
+\begin{lstlisting}
+usr/lib/firmware/nvidia/595.71.05/
+usr/lib/firmware/nvidia/595.71.05/gsp_ga10x.bin
+usr/lib/firmware/nvidia/595.71.05/gsp_tu10x.bin
+\end{lstlisting}
+
+Si los archivos aparecen, el UKI está correcto.
+
+\begin{nota}
+En instalaciones con Limine y múltiples kernels (como CachyOS), el comando
+\texttt{mkinitcpio -P} genera UKIs para todos los kernels instalados y
+preguntará si ejecutar \texttt{limine-mkinitcpio}. Responder \texttt{Y}.
+El UKI activo por defecto es \texttt{omarchy\_linux.efi}.
+\end{nota}
+
+% ──────────────────────────────────────────
+\subsection{Paso 6: Instalar el parche DKMS para Bluetooth (MT7922)}
+
+El driver \texttt{btmtk} del kernel devuelve \texttt{-EINVAL} cuando el
+firmware del MT7922 responde con 7 bytes en lugar de los 9 esperados al
+comando FUNC\_CTRL enable. El módulo DKMS \texttt{btmtk-fix} corrige esto
+usando un poll de estado como fallback.
+
+El código fuente del módulo está en el repositorio de configuración de este
+equipo. Desde el directorio del repositorio:
+
+\begin{lstlisting}[style=bash]
+# El modulo fuente debe estar en /usr/src/btmtk-fix-1.0/
+# (copiarlo alli si no esta)
+sudo dkms add btmtk-fix/1.0
+sudo dkms install btmtk-fix/1.0 --force
+
+# Verificar
+dkms status | grep btmtk
+\end{lstlisting}
+
+Salida esperada: \texttt{btmtk-fix/1.0, <kernel-version>: installed}
+
+% ──────────────────────────────────────────
+\subsection{Paso 7: Reiniciar y verificar antes de Omarchy}
+
+\begin{lstlisting}[style=bash]
+sudo reboot
+\end{lstlisting}
+
+Tras el reinicio, verificar desde la TTY o terminal:
+
+\begin{lstlisting}[style=bash]
+# La GPU debe haberse inicializado (debe existir /dev/nvidia0)
+ls /dev/nvidia*
+# Esperado: /dev/nvidia0  /dev/nvidiactl  /dev/nvidia-uvm  ...
+
+# El modulo del kernel debe ser 595
+cat /proc/driver/nvidia/version
+
+# Bluetooth debe funcionar
+bluetoothctl show
+\end{lstlisting}
+
+Si \texttt{/dev/nvidia0} no aparece, revisar \texttt{dmesg} buscando errores
+de firmware:
+
+\begin{lstlisting}[style=bash]
+sudo dmesg | grep -i "nvidia\|gsp\|firmware" | grep -i "fail\|error"
+\end{lstlisting}
+
+Si aparece \texttt{gsp\_ga10x.bin failed with error -2}, el firmware no
+está en el UKI --- repetir el Paso~5.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Instalar Omarchy}
+
+Una vez verificado que NVIDIA y Bluetooth funcionan:
+
+\begin{lstlisting}[style=bash]
+bash <(curl -fsSL https://omarchy.dev/install)
+\end{lstlisting}
+
+Seguir las instrucciones del instalador. Omarchy configura Hyprland, Waybar
+y las variables de entorno necesarias para NVIDIA en Wayland
+(\texttt{NVD\_BACKEND=direct}, \texttt{LIBVA\_DRIVER\_NAME=nvidia}, etc.).
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Configuración de Steam y TLOU Part~I}
+
+\subsection{Instalar Steam}
+
+\begin{lstlisting}[style=bash]
+sudo pacman -S steam
+\end{lstlisting}
+
+O usar el script del repositorio de configuración si está disponible.
+
+\subsection{Instalar Proton GE}
+
+Desde Steam: \textbf{Ajustes → Compatibilidad → Activar Steam Play para
+todos los títulos} y seleccionar Proton GE. Alternativamente con ProtonUp-Qt:
+
+\begin{lstlisting}[style=bash]
+sudo pacman -S protonup-qt   # o flatpak install ProtonUp-Qt
+\end{lstlisting}
+
+Abrir ProtonUp-Qt, seleccionar ``Steam'' y descargar la versión más reciente
+de \textbf{GE-Proton}.
+
+\subsection{Instalar VKD3D-Proton 3.0.0}
+
+\begin{advertencia}
+\textbf{Versión específica requerida.} TLOU Part~I requiere VKD3D-Proton
+exactamente en la versión \textbf{3.0.0}. Versiones posteriores pueden
+presentar regresiones con este juego.
+\end{advertencia}
+
+Descargar \texttt{vkd3d-proton-3.0.0.tar.zst} desde:
+\texttt{https://github.com/HansKristian-Work/vkd3d-proton/releases/tag/v3.0.0}
+
+Extraer en el directorio de Proton GE activo:
+
+\begin{lstlisting}[style=bash]
+# Sustituir GE-ProtonXX-YY por la version instalada
+PROTON_DIR="$HOME/.steam/root/compatibilitytools.d/GE-ProtonXX-YY"
+tar -xf vkd3d-proton-3.0.0.tar.zst -C "$PROTON_DIR/files/lib64/wine/" \
+    --strip-components=1
+\end{lstlisting}
+
+\begin{nota}
+ProtonUp-Qt también puede instalar versiones específicas de VKD3D-Proton
+directamente desde su interfaz, lo que es más cómodo.
+\end{nota}
+
+\subsection{Opciones de lanzamiento en Steam para TLOU Part~I}
+
+En Steam: clic derecho en el juego → \textbf{Propiedades → Opciones de
+lanzamiento}. Escribir únicamente:
+
+\begin{lstlisting}
+%command%
+\end{lstlisting}
+
+No son necesarias variables especiales (\texttt{DXVK\_FILTER\_DEVICE\_NAME},
+\texttt{PROTON\_NO\_ESYNC}, etc.). El juego usa Vulkan directamente a través
+del Vulkan ICD de NVIDIA.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Mantenimiento tras actualizaciones del kernel}
+
+Cuando se actualiza el kernel (p.ej., de \texttt{6.18.x} a \texttt{6.19.x}),
+los módulos DKMS deben reconstruirse para el nuevo kernel:
+
+\begin{lstlisting}[style=bash]
+sudo dkms autoinstall
+\end{lstlisting}
+
+Esto reconstruye tanto \texttt{nvidia-open-dkms} como \texttt{btmtk-fix} para
+el nuevo kernel.
+
+Después, regenerar el UKI:
+
+\begin{lstlisting}[style=bash]
+sudo mkinitcpio -P
+\end{lstlisting}
+
+Verificar que el firmware siga en el UKI (ver Paso~5) y reiniciar.
+
+\begin{nota}
+El directorio \texttt{/usr/lib/firmware/nvidia/595.71.05/} \textbf{no está
+gestionado por pacman} (fue copiado manualmente). Las actualizaciones del
+sistema no lo tocan. Solo necesita reponerse si se reinstala el sistema o si
+se actualiza \texttt{nvidia-open-dkms} a una versión que use un directorio de
+firmware diferente (p.ej., 596.x.x usaría \texttt{nvidia/596.x.x/}).
+\end{nota}
+
+Si se instala un nuevo kernel mayor que requiera una versión de firmware
+distinta, repetir el Paso~4 (extracción del firmware) con la versión nueva
+del paquete correspondiente.
+
+% ─────────────────────────────────────────────────────────────────────────────
+\section{Referencia rápida: IgnorePkg definitivo}
+
+El bloque completo de \texttt{IgnorePkg} que debe estar en
+\texttt{/etc/pacman.conf} de forma permanente:
+
+\begin{lstlisting}[style=bash]
+IgnorePkg = nvidia-open-dkms nvidia-utils lib32-nvidia-utils \
+            nvidia-settings opencl-nvidia lib32-opencl-nvidia
+\end{lstlisting}
+
+\begin{advertencia}
+\texttt{nvidia-open-dkms} también está en \texttt{IgnorePkg} para evitar
+actualizaciones automáticas no supervisadas. Si se desea actualizar el módulo
+del kernel en el futuro, quitarlo temporalmente de \texttt{IgnorePkg},
+actualizar, extraer el nuevo firmware, reconstruir el UKI y volver a añadirlo.
+\end{advertencia}
+
+\end{document}
