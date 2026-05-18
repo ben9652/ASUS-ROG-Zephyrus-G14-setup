@@ -8,7 +8,7 @@
 #   Shift+Fn+F4      → cicla brillo del teclado
 #   Super+F4         → activa/desactiva modo ambiental (screen-sync)
 #
-# Requisitos: asusctl, grim, python-pillow (pacman -S asusctl grim python-pillow)
+# Requisitos: asusctl, grim, python-pillow (se instalan automáticamente si faltan)
 #
 # Uso: bash setup-keyboard-ambient.sh
 
@@ -18,6 +18,62 @@ BINDIR="$HOME/.local/bin"
 HYPR_BINDINGS="$HOME/.config/hypr/bindings.conf"
 
 mkdir -p "$BINDIR"
+
+install_pkg_pacman() {
+    local pkg="$1"
+
+    if ! command -v pacman >/dev/null 2>&1; then
+        return 1
+    fi
+
+    if [[ $EUID -eq 0 ]]; then
+        pacman -S --needed --noconfirm "$pkg"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo pacman -S --needed --noconfirm "$pkg"
+    else
+        return 1
+    fi
+}
+
+ensure_ambient_dependencies() {
+    local missing=0
+
+    if ! command -v asusctl >/dev/null 2>&1; then
+        echo "[INFO] Falta asusctl; intentando instalar..."
+        if install_pkg_pacman asusctl; then
+            echo "✓ asusctl instalado"
+        else
+            echo "✗ No se pudo instalar asusctl"
+            missing=1
+        fi
+    fi
+
+    if ! command -v grim >/dev/null 2>&1; then
+        echo "[INFO] Falta grim; intentando instalar..."
+        if install_pkg_pacman grim; then
+            echo "✓ grim instalado"
+        else
+            echo "✗ No se pudo instalar grim"
+            missing=1
+        fi
+    fi
+
+    if ! python3 -c 'from PIL import Image' >/dev/null 2>&1; then
+        echo "[INFO] Falta python-pillow (PIL); intentando instalar..."
+        if install_pkg_pacman python-pillow; then
+            echo "✓ python-pillow instalado"
+        else
+            echo "✗ No se pudo instalar python-pillow"
+            missing=1
+        fi
+    fi
+
+    if [[ $missing -ne 0 ]]; then
+        echo "[ERROR] Dependencias incompletas."
+        echo "        Instala manualmente: sudo pacman -S asusctl grim python-pillow"
+        exit 1
+    fi
+}
 
 ensure_asusd_ready() {
     local run_root_cmd=""
@@ -60,6 +116,7 @@ ensure_asusd_ready() {
     fi
 }
 
+ensure_ambient_dependencies
 ensure_asusd_ready
 
 # ── 1. Script principal: keyboard-ambient ─────────────────────────────────────

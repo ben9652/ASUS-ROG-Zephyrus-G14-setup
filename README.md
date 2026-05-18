@@ -110,6 +110,8 @@ Instala en `~/.local/bin/`:
   (Static, Bounce, Slash, Loading, BitStream…).
 
 Dependencias requeridas: `asusctl`, `grim`, `python-pillow`.
+Si falta alguna, el script intenta instalarla automáticamente con `pacman`
+(`--needed`) usando root/sudo.
 
 El setup también valida `asusd`: si falta `/etc/asusd`, lo crea (con permisos
 de root/sudo), hace `reset-failed` del servicio y lo inicia para evitar el
