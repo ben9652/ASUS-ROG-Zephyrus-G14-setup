@@ -297,7 +297,6 @@ shell asociado.
 | Atajo | Acción |
 |---|---|
 | `Super+Alt+V` | Activar / desactivar escucha |
-| `Ctrl+Return` | Ejecutar comando (Walker) |
 | `Super+Shift+V` | Abrir Visual Studio Code |
 
 Instala en `~/.local/bin/`:

@@ -440,13 +440,16 @@ fi
 
 # ── Keybindings ───────────────────────────────────────────────────────────────
 
+# Limpiar binding legado (Ctrl+Return -> Walker), ya no se usa.
+if [[ -f "$HYPR_BINDINGS" ]]; then
+    sed -i '/Ctrl+Return: abrir Walker/d' "$HYPR_BINDINGS"
+    sed -i '/bindd = CTRL, RETURN, Launch apps, exec, omarchy-launch-walker/d' "$HYPR_BINDINGS"
+fi
+
 if grep -q 'voice-commands-toggle' "$HYPR_BINDINGS" 2>/dev/null; then
     echo "    Keybindings de voz ya presentes, sin cambios."
 else
     cat >> "$HYPR_BINDINGS" << 'BIND'
-
-# Ctrl+Return: abrir Walker (lanzador de aplicaciones / "Ejecutar comando")
-bindd = CTRL, RETURN, Launch apps, exec, omarchy-launch-walker
 
 # Super+Shift+V: abrir Visual Studio Code
 bindd = SUPER SHIFT, V, Visual Studio Code, exec, uwsm-app -- code
@@ -457,7 +460,7 @@ bindd = SUPER ALT, V, Toggle voice commands, exec, voice-commands-toggle
 # Super+Alt+D: activar / desactivar dictado de voz
 bindd = SUPER ALT, D, Toggle voice dictation, exec, voice-dictation-toggle
 BIND
-    echo "    Keybindings añadidos (Ctrl+Return, Super+Shift+V, Super+Alt+V, Super+Alt+D)."
+    echo "    Keybindings añadidos (Super+Shift+V, Super+Alt+V, Super+Alt+D)."
 fi
 
 # ── Propiedad de los archivos ─────────────────────────────────────────────────
@@ -482,7 +485,6 @@ echo "Configuración completada."
 echo ""
 echo "  Super+Alt+V    → activar/desactivar reconocimiento de voz"
 echo "  Super+Alt+D    → activar/desactivar dictado libre (para chat/IA)"
-echo "  Ctrl+Return    → abrir Walker (ejecutar comando)"
 echo "  Super+Shift+V  → abrir Visual Studio Code"
 echo ""
 echo "  Edita ~/.config/voice-commands/commands.conf para cambiar los comandos."
