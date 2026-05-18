@@ -19,6 +19,49 @@ HYPR_BINDINGS="$HOME/.config/hypr/bindings.conf"
 
 mkdir -p "$BINDIR"
 
+ensure_asusd_ready() {
+    local run_root_cmd=""
+
+    if [[ ! -d /etc/asusd ]]; then
+        if [[ $EUID -eq 0 ]]; then
+            mkdir -p /etc/asusd
+            echo "✓ /etc/asusd creado"
+        elif command -v sudo >/dev/null 2>&1; then
+            if sudo mkdir -p /etc/asusd; then
+                echo "✓ /etc/asusd creado (sudo)"
+            else
+                echo "⚠ No se pudo crear /etc/asusd (sudo falló)."
+            fi
+        else
+            echo "⚠ Falta /etc/asusd y no hay sudo disponible para crearlo."
+        fi
+    fi
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return
+    fi
+
+    if [[ $EUID -eq 0 ]]; then
+        run_root_cmd=""
+    elif command -v sudo >/dev/null 2>&1; then
+        run_root_cmd="sudo "
+    else
+        echo "⚠ No se puede gestionar asusd sin root/sudo."
+        return
+    fi
+
+    ${run_root_cmd}systemctl reset-failed asusd.service >/dev/null 2>&1 || true
+    ${run_root_cmd}systemctl start asusd.service >/dev/null 2>&1 || true
+
+    if systemctl is-active --quiet asusd.service; then
+        echo "✓ asusd activo"
+    else
+        echo "⚠ asusd sigue inactivo; revisa: systemctl status asusd.service"
+    fi
+}
+
+ensure_asusd_ready
+
 # ── 1. Script principal: keyboard-ambient ─────────────────────────────────────
 cat > "$BINDIR/keyboard-ambient" << 'PYEOF'
 #!/usr/bin/env python3

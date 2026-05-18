@@ -111,6 +111,10 @@ Instala en `~/.local/bin/`:
 
 Dependencias requeridas: `asusctl`, `grim`, `python-pillow`.
 
+El setup también valida `asusd`: si falta `/etc/asusd`, lo crea (con permisos
+de root/sudo), hace `reset-failed` del servicio y lo inicia para evitar el
+error `226/NAMESPACE` al usar `asusctl`.
+
 ---
 
 ## Paso 3 — VSCode
