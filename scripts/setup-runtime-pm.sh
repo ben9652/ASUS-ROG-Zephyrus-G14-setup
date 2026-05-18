@@ -23,7 +23,7 @@ SERVICE_PATH="/etc/systemd/system/powertop-autotune.service"
 # ── 1. Script pci-runtime-pm ──────────────────────────────────────────────────
 cat > "$SCRIPT_PATH" << 'EOF'
 #!/usr/bin/env bash
-# pci-runtime-pm: Enable PCI/NVMe/USB runtime power management.
+# pci-runtime-pm: Enable PCI/USB runtime power management.
 # Called at boot by powertop-autotune.service.
 
 # PCI devices: enable runtime autosuspend
@@ -31,16 +31,33 @@ for dev in /sys/bus/pci/devices/*/power/control; do
     echo auto > "$dev" 2>/dev/null
 done
 
-# NVMe: enable runtime PM
-for dev in /sys/bus/nvme/devices/*/power/control; do
-    echo auto > "$dev" 2>/dev/null
-done
-
-# USB: enable autosuspend, but skip HID (keyboard/mouse/touchpad)
+# USB: enable autosuspend, but protect devices whose interfaces are bound to:
+#   - usbhid        : keyboards, mice, touchpads
+#   - hid-playstation: DualSense / DualShock controllers
+#   - hid-generic   : other HID gamepads
+#   - snd-usb-audio : USB audio (DualSense headset jack, USB headsets)
+#
+# Interface nodes (e.g. 7-1:1.0) are SIBLINGS of the device node (7-1) under
+# /sys/bus/usb/devices/, so we search for "${dev_name}:*" among siblings.
 for dev_path in /sys/bus/usb/devices/*/; do
-    driver_link="$dev_path/driver"
-    driver_name=$(basename "$(readlink -f "$driver_link" 2>/dev/null)" 2>/dev/null)
-    if [[ "$driver_name" != "usbhid" ]]; then
+    dev_name=$(basename "$dev_path")
+    [[ "$dev_name" == *:* ]] && continue  # skip interface nodes
+
+    protected=0
+    for iface_path in /sys/bus/usb/devices/"${dev_name}":*/; do
+        [[ -d "$iface_path" ]] || continue
+        iface_driver=$(basename "$(readlink -f "${iface_path}driver" 2>/dev/null)" 2>/dev/null)
+        case "$iface_driver" in
+            usbhid|hid-playstation|hid-generic|snd-usb-audio)
+                protected=1
+                break
+                ;;
+        esac
+    done
+
+    if [[ "$protected" -eq 1 ]]; then
+        echo on   > "${dev_path}power/control" 2>/dev/null
+    else
         echo auto > "${dev_path}power/control" 2>/dev/null
     fi
 done
