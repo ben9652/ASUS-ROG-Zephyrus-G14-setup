@@ -51,22 +51,23 @@ run_step 3 "Instalación de VSCode"                     "instalar-vscode.sh"
 run_step 4 "Instalación de trans (translate-shell)"    "instalar-trans.sh"
 run_step 5 "Instalación de Steam"                      "instalar-steam.sh"
 run_step 6 "Limpieza automática de shader cache Steam"  "setup-steam-shadercache-cleanup.sh"
-run_step 7 "Perfiles de rendimiento (Fn+F5)"           "setup-power-profiles.sh"
-run_step 8 "Runtime power management (PCI/NVMe/USB)"   "setup-runtime-pm.sh"
-run_step 9 "Botón M4 → ROG Control Center"             "setup-m4-rog-control.sh"
-run_step 10 "Comandos de voz (Vosk)"                    "setup-voice-commands.sh"
-run_step 11 "Atajos de captura de pantalla"             "setup-screenshots.sh"
-run_step 12 "Compatibilidad Omarchy ↔ Hyprland"         "setup-hyprland-compat.sh"
+run_step 7 "Estabilidad DualSense por Bluetooth"        "setup-dualsense-bluetooth-stability.sh"
+run_step 8 "Perfiles de rendimiento (Fn+F5)"            "setup-power-profiles.sh"
+run_step 9 "Runtime power management (PCI/NVMe/USB)"    "setup-runtime-pm.sh"
+run_step 10 "Botón M4 → ROG Control Center"              "setup-m4-rog-control.sh"
+run_step 11 "Comandos de voz (Vosk)"                     "setup-voice-commands.sh"
+run_step 12 "Atajos de captura de pantalla"              "setup-screenshots.sh"
+run_step 13 "Compatibilidad Omarchy ↔ Hyprland"          "setup-hyprland-compat.sh"
 
-# Paso 13 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
-header "Paso 13: Escala de Steam en monitor Full HD + laptop 3K"
+# Paso 14 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
+header "Paso 14: Escala de Steam en monitor Full HD + laptop 3K"
 if [[ -z "${SUDO_USER:-}" ]]; then
     warn "SUDO_USER no definido; ejecutando setup-steam-display.sh como root (puede fallar)."
     bash "$SCRIPTS_DIR/setup-steam-display.sh"
 else
     sudo -u "$SUDO_USER" bash "$SCRIPTS_DIR/setup-steam-display.sh"
 fi
-info "Paso 13 completado."
+info "Paso 14 completado."
 
 echo -e "\n${GREEN}${BOLD}Configuración completa.${NC}"
 echo -e "\n${YELLOW}IMPORTANTE — pasos finales como usuario (no root):${NC}"
