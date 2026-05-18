@@ -166,12 +166,16 @@ La decisión fue: usar \textbf{nvidia-open 580 + kernel LTS 6.18}.
 
 CachyOS usa \textbf{Limine} como gestor de arranque. Para que
 \texttt{linux-cachyos-lts} sea la entrada predeterminada en cada arranque,
-editar \texttt{/etc/limine/limine.cfg} y colocar la entrada LTS en primera
-posición, o bien establecer \texttt{DEFAULT\_ENTRY} explícitamente:
+editar \texttt{/etc/default/limine} y colocar la entrada LTS antes que
+\texttt{linux-cachyos} en \texttt{BOOT\_ORDER}. Luego regenerar la
+configuración de Limine con \texttt{sudo limine-update}:
 
 \begin{lstlisting}[style=bash]
-sudo nano /etc/limine/limine.cfg
+sudoedit /etc/default/limine
+BOOT_ORDER="linux-cachyos-lts, linux-cachyos, *fallback, Snapshots"
+sudo limine-update
 \end{lstlisting}
+
 
 Asegurarse de que la sección del kernel LTS aparece antes que cualquier otra
 entrada \texttt{:OS\_ENTRY:}. Limine arranca la primera entrada válida que

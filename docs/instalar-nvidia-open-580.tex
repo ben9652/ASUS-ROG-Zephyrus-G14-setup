@@ -230,13 +230,17 @@ ls /lib/modules/6.18.31-1-cachyos-lts/updates/dkms/ | grep nvidia
 CachyOS usa \textbf{Limine} como gestor de arranque. Para que
 \texttt{linux-cachyos-lts} sea la entrada predeterminada:
 
+Editar \texttt{/etc/default/limine} y poner \texttt{linux-cachyos-lts} antes que
+\texttt{linux-cachyos} en \texttt{BOOT\_ORDER}. Limine arranca automáticamente
+la primera entrada válida. Luego regenerar la configuración con:
+
 \begin{lstlisting}[style=bash]
-sudo nano /etc/limine/limine.cfg
+sudoedit /etc/default/limine
+BOOT_ORDER="linux-cachyos-lts, linux-cachyos, *fallback, Snapshots"
+sudo limine-update
 \end{lstlisting}
 
-Mover la sección del kernel LTS al \textbf{primer lugar} en el fichero.
-Limine arranca automáticamente la primera entrada válida. Verificar tras
-reiniciar:
+Verificar tras reiniciar:
 
 \begin{lstlisting}[style=bash]
 uname -r
