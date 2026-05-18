@@ -416,25 +416,24 @@ Crea un backup del `hyprland.conf` antes de modificarlo y es idempotente
 
 ## Bootloader
 
-El gestor de arranque es **Limine**. `/boot/limine.conf` se genera
-automáticamente a partir de la configuración de Limine usada por el sistema en
-`/etc/default/limine`.
+El gestor de arranque es **Limine**, configurado desde `/etc/default/limine`.
+La configuración se genera en `/boot/limine.conf` automáticamente.
 
-- Poner `linux-cachyos` antes que `linux-cachyos-lts` en `BOOT_ORDER` para que
-  arranque por defecto.
-- `timeout: 0` → no muestra el menú de selección.
+**Para cambiar el kernel por defecto:** edita `BOOT_ORDER` en `/etc/default/limine`
+y lista explícitamente los kernels en el orden que quieras, luego regenera con
+`limine-update`. Por ejemplo, para que `linux-cachyos` arranque por defecto:
 
-> `/boot/limine.conf` es **regenerado automáticamente** por `limine-entry-tool`
-> cada vez que se actualiza el kernel. Los cambios manuales (como los parámetros
-> de energía) deben reaplicarse tras cada actualización del kernel.
-
-Ejemplo:
-
-```
+```bash
 sudoedit /etc/default/limine
+# Cambiar esta línea:
 BOOT_ORDER="linux-cachyos, linux-cachyos-lts, *fallback, Snapshots"
+# Guardar y regenerar:
 sudo limine-update
 ```
+
+> `/boot/limine.conf` es **regenerado automáticamente** por `limine-entry-tool`
+> cada vez que se actualiza el kernel o que ejecutas `limine-update`. Los cambios
+> en cmdline deben reaplicarse tras regenerar.
 
 Parámetros de cmdline añadidos manualmente en la entrada `linux-cachyos`:
 
