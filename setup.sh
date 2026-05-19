@@ -58,6 +58,7 @@ run_step 10 "Botón M4 → ROG Control Center"              "setup-m4-rog-contro
 run_step 11 "Comandos de voz (Vosk)"                     "setup-voice-commands.sh"
 run_step 12 "Atajos de captura de pantalla"              "setup-screenshots.sh"
 run_step 13 "Compatibilidad Omarchy ↔ Hyprland"          "setup-hyprland-compat.sh"
+run_step 14 "Persistencia de modo GPU (anti-reset BIOS)"  "setup-gpu-mode-persist.sh"
 
 # Paso 14 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
 header "Paso 14: Escala de Steam en monitor Full HD + laptop 3K"
