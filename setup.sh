@@ -58,17 +58,17 @@ run_step 10 "Botón M4 → ROG Control Center"              "setup-m4-rog-contro
 run_step 11 "Comandos de voz (Vosk)"                     "setup-voice-commands.sh"
 run_step 12 "Atajos de captura de pantalla"              "setup-screenshots.sh"
 run_step 13 "Compatibilidad Omarchy ↔ Hyprland"          "setup-hyprland-compat.sh"
-run_step 14 "Persistencia de modo GPU (anti-reset BIOS)"  "setup-gpu-mode-persist.sh"
+run_step 14 "G-Helper (control ROG: GPU, fans, batería, RGB)"  "setup-g-helper.sh"
 
-# Paso 14 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
-header "Paso 14: Escala de Steam en monitor Full HD + laptop 3K"
+# Paso 15 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
+header "Paso 15: Escala de Steam en monitor Full HD + laptop 3K"
 if [[ -z "${SUDO_USER:-}" ]]; then
     warn "SUDO_USER no definido; ejecutando setup-steam-display.sh como root (puede fallar)."
     bash "$SCRIPTS_DIR/setup-steam-display.sh"
 else
     sudo -u "$SUDO_USER" bash "$SCRIPTS_DIR/setup-steam-display.sh"
 fi
-info "Paso 14 completado."
+info "Paso 15 completado."
 
 echo -e "\n${GREEN}${BOLD}Configuración completa.${NC}"
 echo -e "\n${YELLOW}IMPORTANTE — pasos finales como usuario (no root):${NC}"
