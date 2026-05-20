@@ -1,10 +1,10 @@
 #!/bin/bash
 # setup-keyboard-layout-switcher.sh
 #
-# Configura cambio de distribución de teclado US <-> Latam con Alt+` (grave)
+# Configura cambio de distribución de teclado US <-> Latam con Super+` (grave)
 # y agrega un indicador en la barra de Waybar.
 #
-# NOTA: Se usa un keybinding de Hyprland (Alt+grave) en lugar de la opción XKB
+# NOTA: Se usa un keybinding de Hyprland (Super+grave) en lugar de la opción XKB
 # grp:alt_shift_toggle, porque dicha opción colisiona con Shift+Alt+Tab
 # (cambio de foco entre ventanas) al dispararse a nivel XKB antes de procesar Tab.
 #
@@ -37,7 +37,7 @@ sed -i 's|^\(\s*\)#\s*natural_scroll\s*=.*|\1natural_scroll = true|' "$HYPR_INPU
 echo "    kb_layout y kb_options actualizados (sin grp:alt_shift_toggle)."
 echo "    natural_scroll activado en touchpad."
 
-# ─── 2. Hyprland: keybinding Alt+grave para cambiar distribución ──────────────
+# ─── 2. Hyprland: keybinding Super+grave para cambiar distribución ─────────────
 
 echo "==> [2/4] Configurando bindings.conf..."
 
@@ -46,11 +46,10 @@ if grep -q 'switchxkblayout' "$HYPR_BINDINGS"; then
 else
     cat >> "$HYPR_BINDINGS" <<'BIND'
 
-# Cambio de distribución de teclado US <-> Latam (Alt+`)
-# Se usa Alt+grave en lugar de Alt+Shift para evitar conflicto con Shift+Alt+Tab
-bindd = ALT, grave, Switch keyboard layout, exec, hyprctl switchxkblayout all next
+# Cambio de distribución de teclado US <-> Latam (Super+`)
+bindd = SUPER, grave, Switch keyboard layout, exec, hyprctl switchxkblayout all next
 BIND
-    echo "    Keybinding Alt+grave agregado."
+    echo "    Keybinding Super+grave agregado."
 fi
 
 # ─── 3. Waybar: agregar módulo hyprland/language ─────────────────────────────
