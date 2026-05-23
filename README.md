@@ -18,7 +18,8 @@ ASUS-ROG-Zephyrus-G14-setup/
 │   ├── setup-runtime-pm.sh                ← paso 7: runtime PM (ahorro de batería)
 │   ├── setup-m4-rog-control.sh            ← paso 8: botón M4 → ROG Control Center
 │   ├── setup-voice-commands.sh            ← paso 9: comandos de voz offline
-│   ├── setup-steam-display.sh             ← paso 12: escala de Steam multi-monitor
+│   ├── instalar-calcurse.sh               ← paso 15: calendario TUI
+│   ├── setup-steam-display.sh             ← paso 16: escala de Steam multi-monitor
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
     ├── luces-rog.tex / .pdf               ← documentación: iluminación ROG
@@ -33,7 +34,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 sudo ./setup.sh
 ```
 
-Ejecuta los pasos **1 al 12** en orden. Si alguno falla, el proceso se detiene e
+Ejecuta los pasos **1 al 16** en orden. Si alguno falla, el proceso se detiene e
 indica exactamente cuál fue el problema.
 
 | Paso | Script | Requiere root |
@@ -49,7 +50,8 @@ indica exactamente cuál fue el problema.
 | 9 | `setup-voice-commands.sh` | Sí |
 | 10 | `setup-screenshots.sh` | No |
 | 11 | `setup-hyprland-compat.sh` | No |
-| 12 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
+| 15 | `instalar-calcurse.sh` | Sí |
+| 16 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
 
 > `setup-monitor-workspaces.sh` **no forma parte del setup global** porque
 > requiere conocer los nombres exactos de tus monitores. Ejecútalo por separado
@@ -385,6 +387,23 @@ bash scripts/setup-steam-display.sh --reset
 ```
 
 > Tras aplicarlo, **reinicia Steam** para que la variable de entorno tome efecto.
+
+---
+
+## Paso 15 — Calendario TUI
+
+**Script:** `scripts/instalar-calcurse.sh`
+
+Instala **calcurse**, un organizador personal TUI que combina calendario,
+agenda y lista de tareas, todo en la terminal.
+
+| Atajo | Acción |
+|---|---|
+| `Super+Shift+C` | Calendario web (HEY) |
+| `Super+Shift+Alt+C` | **calcurse** (TUI) |
+
+El atajo sigue el mismo patrón que el par Música / Música TUI
+(`Super+Shift+M` / `Super+Shift+Alt+M`).
 
 ---
 

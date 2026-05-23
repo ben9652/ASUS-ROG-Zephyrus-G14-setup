@@ -59,16 +59,17 @@ run_step 11 "Comandos de voz (Vosk)"                     "setup-voice-commands.s
 run_step 12 "Atajos de captura de pantalla"              "setup-screenshots.sh"
 run_step 13 "Compatibilidad Omarchy ↔ Hyprland"          "setup-hyprland-compat.sh"
 run_step 14 "G-Helper (control ROG: GPU, fans, batería, RGB)"  "setup-g-helper.sh"
+run_step 15 "Calendario TUI (calcurse)"                  "instalar-calcurse.sh"
 
-# Paso 15 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
-header "Paso 15: Escala de Steam en monitor Full HD + laptop 3K"
+# Paso 16 modifica ~/.config/ y llama a hyprctl: debe correr como el usuario real
+header "Paso 16: Escala de Steam en monitor Full HD + laptop 3K"
 if [[ -z "${SUDO_USER:-}" ]]; then
     warn "SUDO_USER no definido; ejecutando setup-steam-display.sh como root (puede fallar)."
     bash "$SCRIPTS_DIR/setup-steam-display.sh"
 else
     sudo -u "$SUDO_USER" bash "$SCRIPTS_DIR/setup-steam-display.sh"
 fi
-info "Paso 15 completado."
+info "Paso 16 completado."
 
 echo -e "\n${GREEN}${BOLD}Configuración completa.${NC}"
 echo -e "\n${YELLOW}IMPORTANTE — pasos finales como usuario (no root):${NC}"
