@@ -43,7 +43,7 @@ BIND
     echo "    ✓ Binding Fn+F6 (XF86Launch5) añadido."
 fi
 
-if grep -qE 'SUPER SHIFT.*,.*S.*screenshot|screenshot.*SUPER SHIFT.*S' "$HYPR_BINDINGS" 2>/dev/null; then
+if grep -qE '^[^#]*SUPER SHIFT.*,.*S.*screenshot|^[^#]*screenshot.*SUPER SHIFT.*S' "$HYPR_BINDINGS" 2>/dev/null; then
     echo "    Binding Super+Shift+S ya existe, sin cambios."
 else
     # Eliminar la línea comentada preexistente si la hay, para no dejar ruido
