@@ -164,7 +164,29 @@ else
     echo "  · Binding XF86Launch4 ya existe, no se modifica"
 fi
 
-# ── 6. Recargar Hyprland si está corriendo ────────────────────────────────────
+# ── 6. UPower: hibernar a batería crítica ─────────────────────────────────────
+UPOWER_CONF="/etc/UPower/UPower.conf"
+if [[ -w "$UPOWER_CONF" ]]; then
+    sed -i \
+        's/^PercentageCritical=.*/PercentageCritical=7.0/' \
+        "$UPOWER_CONF"
+    sed -i \
+        's/^PercentageAction=.*/PercentageAction=5.0/' \
+        "$UPOWER_CONF"
+    sed -i \
+        's/^CriticalPowerAction=.*/CriticalPowerAction=Hibernate/' \
+        "$UPOWER_CONF"
+    systemctl restart upower 2>/dev/null || true
+    echo "  ✓ UPower: hiberna al 5% (advertencia crítica al 7%)"
+else
+    warn "No se puede escribir $UPOWER_CONF. Ejecuta el script con sudo para aplicarlo."
+    warn "O aplícalo manualmente:"
+    warn "  sudo sed -i 's/^PercentageCritical=.*/PercentageCritical=7.0/' $UPOWER_CONF"
+    warn "  sudo sed -i 's/^PercentageAction=.*/PercentageAction=5.0/' $UPOWER_CONF"
+    warn "  sudo sed -i 's/^CriticalPowerAction=.*/CriticalPowerAction=Hibernate/' $UPOWER_CONF"
+fi
+
+# ── 7. Recargar Hyprland si está corriendo ────────────────────────────────────
 if command -v hyprctl &>/dev/null && hyprctl version &>/dev/null 2>&1; then
     hyprctl reload
     echo "  ✓ Hyprland recargado"
