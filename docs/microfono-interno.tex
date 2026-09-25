@@ -1,0 +1,423 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue!70!black,
+}
+
+\lstdefinestyle{bash}{
+  language=bash,
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{gray!10},
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+}
+
+\title{%
+  \textbf{Micrófono interno sin funcionar}\\[0.4em]
+  \large Diagnóstico y solución en el ASUS ROG Zephyrus G14 GA403UV\\
+  con CachyOS + Omarchy (PipeWire / WirePlumber)
+}
+\author{pc-config}
+\date{Septiembre de 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────
+\section{Resumen}
+
+El micrófono interno del \textbf{ASUS ROG Zephyrus G14 GA403UV} aparecía
+identificado por el sistema (visible en \texttt{arecord}, \texttt{wpctl} y
+\texttt{pavucontrol}) pero \textbf{no capturaba audio}: OBS Studio no detectaba
+sonido y en \texttt{alsamixer} no se veían niveles.
+
+La causa no era el firmware, ni PipeWire, ni el coprocesador de audio AMD
+(ACP/SOF): era el \textbf{mux de entrada del codec Realtek ALC285}, que estaba
+seleccionando el micrófono del \emph{jack} externo (sin nada conectado) en
+lugar de los micrófonos internos.
+
+La solución son tres comandos de \texttt{amixer} más el guardado del estado
+ALSA para que sobreviva reinicios.
+
+% ─────────────────────────────────────────────
+\section{Entorno del sistema}
+
+\begin{center}
+\begin{tabular}{ll}
+  \toprule
+  Componente & Versión / valor \\
+  \midrule
+  Portátil            & ASUS ROG Zephyrus G14 GA403UV \\
+  Sistema operativo   & CachyOS (base Arch Linux) \\
+  Entorno de escritorio & Omarchy (Hyprland + Wayland) \\
+  Kernel activo       & \texttt{linux-cachyos} 7.0.9-1 \\
+  Codec de audio      & Realtek ALC285 (tarjeta 2, HDA) \\
+  Amplificadores      & 2 × Cirrus Logic CS35L56 (I2C) para altavoces \\
+  Servidor de audio   & PipeWire 1.6.8 + WirePlumber 0.5.17 \\
+  Firmware SOF        & \texttt{sof-firmware} 2025.12.2-1 \\
+  UCM                 & \texttt{alsa-ucm-conf} 1.2.16.1-1 \\
+  Utilidades ALSA     & \texttt{alsa-utils} 1.2.16-1 \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+El equipo tiene \textbf{cuatro} dispositivos de audio PCI:
+
+\begin{lstlisting}[style=bash]
+$ lspci -nn | grep -i audio
+01:00.1 Audio device: NVIDIA Corporation AD107 HD Audio Controller [10de:22be]
+65:00.1 Audio device: AMD/ATI Radeon High Definition Audio [1002:1640]
+65:00.5 Multimedia controller: AMD Audio Coprocessor [1022:15e2] (rev 63)
+65:00.6 Audio device: AMD Ryzen HD Audio Controller [1022:15e3]
+\end{lstlisting}
+
+El micrófono interno \textbf{cuelga del codec ALC285} (función HDA en
+\texttt{65:00.6}), no del ACP. Por eso no hace falta tocar SOF ni
+\texttt{snd\_sof\_amd\_*} para este problema.
+
+% ─────────────────────────────────────────────
+\section{Síntoma}
+
+\begin{itemize}
+  \item El micrófono figura como dispositivo de captura válido
+        (\texttt{arecord -l} muestra \texttt{card 2: Generic\_1 [HD-Audio
+        Generic], device 0: ALC285 Analog}).
+  \item La fuente existe en PipeWire:
+        \texttt{alsa\_input.pci-0000\_65\_00.6.analog-stereo}.
+  \item Al grabar o al usar OBS, \textbf{silencio absoluto} (RMS 0).
+  \item En \texttt{alsamixer} no se observan niveles de captura.
+\end{itemize}
+
+% ─────────────────────────────────────────────
+\section{Diagnóstico}
+
+\subsection{Comprobar el stack de audio}
+
+\begin{lstlisting}[style=bash]
+# Dispositivos de captura
+arecord -l
+
+# Tarjetas ALSA
+cat /proc/asound/cards
+
+# Estado de PipeWire (fuentes y sinks)
+wpctl status
+
+# Puertos del card del codec
+pactl list cards | grep -E 'alsa_card|analog-input|Ports:'
+\end{lstlisting}
+
+Salida relevante observada:
+
+\begin{lstlisting}[style=bash]
+**** List of CAPTURE Hardware Devices ****
+card 2: Generic_1 [HD-Audio Generic], device 0: ALC285 Analog [ALC285 Analog]
+  Subdevices: 1/1
+
+# Puertos del card 65:00.6
+analog-input-internal-mic: Microfono interno (priority: 8900, unknown)
+analog-input-mic: Microfono (priority: 8700, not available)
+\end{lstlisting}
+
+\subsection{El control real: \texttt{Capture Source}}
+
+En este codec el mux de entrada no se expone como un simple switch de
+alsa\-mixer, sino como un \textbf{control enumerado}:
+
+\begin{lstlisting}[style=bash]
+$ amixer -c 2 cget numid=19
+numid=19,iface=MIXER,name='Capture Source'
+  ; type=ENUMERATED,access=rw------,values=1,items=4
+  ; Item #0 'Internal Mic'
+  ; Item #1 'Internal Mic 1'
+  ; Item #2 'Mic'
+  ; Item #3 'Mic 1'
+  : values=2        # <-- 'Mic' = jack externo (SIN conectar)
+\end{lstlisting}
+
+Los micrófonos internos son dos pines digitales del codec:
+
+\begin{lstlisting}[style=bash]
+$ grep -E 'Node 0x12|Node 0x13' -A2 /proc/asound/card2/codec#0
+Node 0x12 [Pin Complex] wcaps 0x40040b: Stereo Amp-In
+  Pin Default 0x90a60140: [Fixed] Mic at Int N/A   # mic interno 1
+Node 0x13 [Pin Complex] wcaps 0x40040b: Stereo Amp-In
+  Pin Default 0x90a60150: [Fixed] Mic at Int N/A   # mic interno 2
+\end{lstlisting}
+
+Además, la ganancia estaba al máximo: \texttt{Internal Mic Boost = 30\,dB}
+(3 de 3), lo que saturaba cualquier señal.
+
+% ─────────────────────────────────────────────
+\section{Causa raíz}
+
+\begin{enumerate}
+  \item \texttt{Capture Source} apuntaba al ítem \texttt{Mic}
+        (micrófono del \emph{jack} combo, nodo externo), que no tiene nada
+        conectado $\Rightarrow$ captura de silencio.
+  \item Aun seleccionando la entrada correcta, el \emph{boost} de hardware a
+        30\,dB produce \emph{clipping} masivo (se midió 27\,\% de muestras
+        recortadas).
+\end{enumerate}
+
+No es un fallo de firmware, ni de PipeWire/WirePlumber, ni del ACP/SOF.
+El estado guardado en \texttt{/var/lib/alsa/asound.state} simplemente tenía
+seleccionada la entrada equivocada.
+
+% ─────────────────────────────────────────────
+\section{Solución}
+
+\subsection{Comandos}
+
+\begin{lstlisting}[style=bash]
+# 0) Confirmar la tarjeta del codec (aqui: card 2, ALC285)
+cat /proc/asound/cards
+
+# 1) Seleccionar el microfono interno (nodos 0x12/0x13)
+amixer -c 2 cset iface=MIXER,name='Capture Source' 'Internal Mic'
+
+# 2) Ganancia limpia: boost 0 dB y captura al 84 %
+amixer -c 2 sset 'Internal Mic Boost',0 0
+amixer -c 2 sset 'Capture' 84%
+
+# 3) Guardar el estado para que sobreviva reinicios
+sudo alsactl store
+\end{lstlisting}
+
+\begin{itemize}
+  \item \texttt{alsactl store} se puede lanzar sin terminal root con
+        \texttt{pkexec alsactl store}; en Omarchy salta un diálogo gráfico de
+        polkit.
+  \item Si la tarjeta no fuese la 2, usar el nombre:
+        \texttt{amixer -c Generic\_1 ...} o ajustar el número según
+        \texttt{/proc/asound/cards}.
+\end{itemize}
+
+\subsection{Nota sobre la sintaxis de amixer}
+
+Con \texttt{alsa-utils} 1.2.16, para los switches exclusivos del codec
+(\texttt{Internal Mic}, \texttt{Mic}, etc.) la forma \texttt{sset 'Internal
+Mic' on} falla con \texttt{amixer: Invalid command!}. Hay que usar el enum
+(\texttt{cset ... 'Capture Source' 'Internal Mic'}) o \texttt{toggle}.
+El comando documentado arriba con \texttt{cset} es el correcto y verificado.
+
+\subsection{Persistencia}
+
+El servicio \texttt{alsa-restore.service} (estático, se ejecuta en cada
+arranque) restaura los controles desde:
+
+\begin{lstlisting}[style=bash]
+/var/lib/alsa/asound.state
+\end{lstlisting}
+
+Verificar que quedó bien guardado:
+
+\begin{lstlisting}[style=bash]
+grep -A10 "name 'Capture Source'" /var/lib/alsa/asound.state
+# Debe contener:  value 'Internal Mic'
+\end{lstlisting}
+
+\subsection{Solución permanente: servicio de usuario}
+
+Además del estado ALSA, se instaló un servicio de usuario que reafirma el
+micrófono interno en cada inicio de sesión (por si una actualización de kernel
+o de PipeWire revierte el estado). Ya está habilitado:
+
+\begin{lstlisting}[style=bash]
+systemctl --user status internal-mic.service
+\end{lstlisting}
+
+\texttt{\textasciitilde/.local/bin/internal-mic-fix}:
+
+\begin{lstlisting}[style=bash]
+#!/usr/bin/env bash
+# Fija los microfonos internos del ALC285, esperando al codec.
+set -u
+AMIXER=/usr/bin/amixer
+for _ in $(seq 1 30); do
+    for card in 0 1 2 3 4 5; do
+        if "$AMIXER" -c "$card" cget iface=MIXER,name='Capture Source' \
+             >/dev/null 2>&1; then
+            "$AMIXER" -c "$card" cset iface=MIXER,name='Capture Source' \
+                 'Internal Mic' >/dev/null 2>&1
+            "$AMIXER" -c "$card" sset 'Internal Mic Boost',0 0 \
+                 >/dev/null 2>&1
+            exit 0
+        fi
+    done
+    sleep 1
+done
+exit 1
+\end{lstlisting}
+
+\texttt{\textasciitilde/.config/systemd/user/internal-mic.service}:
+
+\begin{lstlisting}[style=bash]
+[Unit]
+Description=Fijar microfono interno (ALC285) como fuente de captura
+After=pipewire.service wireplumber.service
+
+[Service]
+Type=oneshot
+ExecStart=%h/.local/bin/internal-mic-fix
+RemainAfterExit=yes
+
+[Install]
+WantedBy=default.target
+\end{lstlisting}
+
+\begin{lstlisting}[style=bash]
+chmod +x ~/.local/bin/internal-mic-fix
+systemctl --user daemon-reload
+systemctl --user enable --now internal-mic.service
+\end{lstlisting}
+
+% ─────────────────────────────────────────────
+\section{Verificación}
+
+Grabar unos segundos y medir la señal (hablar durante la grabación):
+
+\begin{lstlisting}[style=bash]
+timeout 8 pw-record \
+  --target alsa_input.pci-0000_65_00.6.analog-stereo \
+  /tmp/test-mic.wav
+\end{lstlisting}
+
+Análisis rápido del WAV:
+
+\begin{lstlisting}[style=bash]
+python3 -c "
+import wave, struct
+w = wave.open('/tmp/test-mic.wav','rb')
+data = w.readframes(w.getnframes())
+s = struct.unpack('<%dh' % (len(data)//2), data)
+peak = max(abs(x) for x in s)
+rms = (sum(x*x for x in s)/len(s))**0.5
+clip = sum(1 for x in s if abs(x) >= 32000)
+print(f'peak={peak} ({peak/32768*100:.1f}%) rms={rms:.0f} '
+      f'clip={clip/len(s)*100:.2f}%')
+"
+\end{lstlisting}
+
+Resultado esperado con voz normal:
+
+\begin{itemize}
+  \item \texttt{peak} entre 5\,\% y 50\,\% (sin llegar a 100\,\%).
+  \item \texttt{rms} mayor a 0.
+  \item \texttt{clip} cercano a 0\,\%.
+\end{itemize}
+
+Si aparece \texttt{peak=32768} y \texttt{clip} alto, bajar la ganancia
+(\texttt{Capture} o el boost). Si la señal es muy baja, subirla primero en la
+aplicación (OBS permite filtros de ganancia) antes que el boost de hardware.
+
+% ─────────────────────────────────────────────
+\section{Uso en aplicaciones (OBS)}
+
+\begin{enumerate}
+  \item Añadir fuente \textbf{Audio Input Capture} (\emph{Captura de entrada
+        de audio}).
+  \item Seleccionar el dispositivo:
+        \texttt{Ryzen HD Audio Controller Estéreo analógico}
+        (internamente \texttt{alsa\_input.pci-0000\_65\_00.6.analog-stereo}).
+  \item En el mezclador, activar el monitoreo o verificar el vúmetro al
+        hablar.
+\end{enumerate}
+
+\subsection{Advertencia: la fuente puede apuntar al headset Bluetooth}
+
+Caso real encontrado tras un reinicio: el sistema estaba perfecto (el micrófono
+interno capturaba bien), pero OBS seguía sin sonido porque su fuente
+\texttt{Mic/Aux} (\texttt{AuxAudioDevice1}) había quedado apuntando al
+micrófono de un headset Bluetooth:
+
+\begin{lstlisting}[style=bash]
+"device_id": "bluez_input.74:B7:E6:37:11:11"
+\end{lstlisting}
+
+Si el headset está apagado o desconectado, esa fuente no existe y OBS captura
+silencio. Verificar en \emph{Propiedades} de la fuente que el dispositivo sea
+el micrófono interno (o \texttt{Predeterminado}). La configuración se guarda
+en:
+
+\begin{lstlisting}[style=bash]
+~/.config/obs-studio/basic/scenes/<escena>.json   # AuxAudioDevice1
+\end{lstlisting}
+
+Cerrar OBS antes de editar el JSON a mano, y hacer copia de seguridad.
+
+% ─────────────────────────────────────────────
+\section{Notas y mantenimiento}
+
+\subsection{Si se conecta un headset con micrófono}
+
+El ítem \texttt{Mic} del enum corresponde al micrófono del \emph{jack}. Para
+usarlo:
+
+\begin{lstlisting}[style=bash]
+amixer -c 2 cset iface=MIXER,name='Capture Source' 'Mic'
+# ... y al desenchufar, volver a 'Internal Mic'
+\end{lstlisting}
+
+También se puede cambiar desde la interfaz gráfica de PipeWire (pavucontrol /
+\texttt{wpctl}), seleccionando el puerto \emph{Micrófono} en la pestaña de
+dispositivos de entrada.
+
+\subsection{Por qué no hay que tocar SOF/ACP}
+
+Aunque los módulos \texttt{snd\_sof\_amd\_acp63} y \texttt{snd\_pci\_ps} estén
+cargados, el ACP (\texttt{65:00.5}) no expone ninguna tarjeta de captura en
+este equipo y \textbf{no es necesario}: los micrófonos internos están en los
+pines 0x12/0x13 del ALC285. No instalar ni forzar controladores adicionales
+por este problema.
+
+\subsection{Diagnóstico rápido de 30 segundos}
+
+\begin{lstlisting}[style=bash]
+# 1) Estado del mux (debe decir Internal Mic)
+amixer -c 2 cget numid=19
+
+# 2) Niveles
+amixer -c 2 sget 'Internal Mic Boost',0 | grep 'Front Left'
+amixer -c 2 sget 'Capture' | grep 'Front Left'
+
+# 3) Fuente visible en PipeWire
+wpctl status | grep -A3 'Sources:'
+\end{lstlisting}
+
+\subsection{Referencia de controles}
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  Control & Rango & Valor recomendado \\
+  \midrule
+  \texttt{Capture Source} (numid 19) & enum 4 ítems & \texttt{Internal Mic} \\
+  \texttt{Internal Mic Boost},0 & 0--3 (0--30\,dB) & 0 \\
+  \texttt{Capture} & 0--63 & 84\,\% (53) \\
+  \texttt{Master} & 0--87 & 100\,\% (87) \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
