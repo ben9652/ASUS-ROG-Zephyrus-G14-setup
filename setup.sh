@@ -71,6 +71,8 @@ else
 fi
 info "Paso 16 completado."
 
+run_step 17 "Aura del teclado al arranque (Rainbow Cycle)" "setup-keyboard-aura-boot.sh"
+
 echo -e "\n${GREEN}${BOLD}Configuración completa.${NC}"
 echo -e "\n${YELLOW}IMPORTANTE — pasos finales como usuario (no root):${NC}"
 echo -e "  1. Recarga Hyprland:   ${BOLD}hyprctl reload${NC}"

@@ -68,8 +68,8 @@ El objetivo es proporcionar tres funcionalidades:
   \toprule
   Componente & Versión & Función \\
   \midrule
-  \texttt{asusctl} & 6.3.7-1 & CLI/daemon para hardware ASUS ROG \\
-  \texttt{asusd}   & 6.3.7-1 & Servicio D-Bus (\texttt{xyz.ljones.Asusd}) \\
+  \texttt{asusctl} & 6.5.0-1 & CLI/daemon para hardware ASUS ROG \\
+  \texttt{asusd}   & 6.5.0-1 & Servicio D-Bus (\texttt{xyz.ljones.Asusd}) \\
   \texttt{grim}    & ---      & Captura de pantalla en Wayland \\
   \texttt{python-pillow} & 12.2.0-1 & Reescalado de imagen para color dominante \\
   \texttt{busctl}  & systemd  & Lectura/escritura de propiedades D-Bus \\
@@ -91,7 +91,9 @@ El daemon \texttt{asusd} expone los siguientes objetos D-Bus relevantes:
 \section{Scripts instalados}
 
 Todos los ejecutables se instalan en \texttt{\textasciitilde/.local/bin/} y
-requieren únicamente permisos de usuario.
+requieren únicamente permisos de usuario, a excepción de
+\texttt{keyboard-aura-boot} (ver sección \ref{sec:arranque}), que se instala
+como servicio de sistema con \texttt{setup-keyboard-aura-boot.sh}.
 
 \subsection{\texttt{keyboard-ambient}}
 
@@ -135,7 +137,7 @@ Avanza al siguiente efecto Aura (\texttt{asusctl aura effect --next-mode}),
 detiene el modo ambiental si estuviera activo, y muestra una notificación con
 el nombre del efecto.
 
-\textbf{Efectos disponibles} (número D-Bus → nombre):
+\textbf{Efectos soportados en el GA403UV} (número D-Bus → nombre):
 
 \begin{center}
 \begin{tabular}{rll}
@@ -146,17 +148,13 @@ el nombre del efecto.
   1  & Breathe          & Pulsación suave \\
   2  & Rainbow Cycle    & Ciclo de colores \\
   3  & Rainbow Wave     & Ola de arcoíris \\
-  4  & Stars            & Estrellas \\
-  5  & Rain             & Lluvia \\
-  6  & Highlight        & Resaltar teclas activas \\
-  7  & Laser            & Láser \\
-  8  & Ripple           & Ondas \\
   10 & Pulse            & Pulso \\
-  11 & Comet            & Cometa \\
-  12 & Flash            & Destello \\
   \bottomrule
 \end{tabular}
 \end{center}
+
+\texttt{asusd} expone únicamente estos cinco modos para este modelo; el resto de
+efectos de la familia ROG no están disponibles (la detección los descarta).
 
 \subsection{\texttt{keyboard-slash-cycle}}
 
@@ -176,6 +174,64 @@ Cicla entre los 16 modos del slash bar y muestra una notificación:
 \textbf{Nota importante:} El slash bar del modelo GA403UV solo se activa
 durante eventos del sistema (arranque, suspensión y apagado). No existe modo
 continuo; el cambio de modo se aplicará en el próximo evento.
+
+\subsection{\texttt{keyboard-aura-boot}}
+
+Aplica el efecto Aura y el brillo al arranque del sistema. No vive en
+\texttt{\textasciitilde/.local/bin/} sino en \texttt{/usr/local/bin/}, y se
+ejecuta mediante el servicio
+\texttt{/etc/systemd/system/keyboard-aura-boot.service}. Ver la sección
+\ref{sec:arranque} para el detalle y el motivo.
+
+% ─────────────────────────────────────────────
+\section{Efecto al arranque (Rainbow Cycle)}
+\label{sec:arranque}
+
+\subsection*{Por qué el teclado no arranca en Rainbow Cycle}
+
+En Windows el efecto Aura lo escribe Armoury Crate/Aura Sync en el EC del
+teclado y el EC lo conserva al apagar, por lo que el teclado se ilumina apenas
+se da energía. En Linux eso no lo hace el firmware sino \texttt{asusd}, que
+guarda el último estado en \texttt{/etc/asusd/aura\_<id>.ron} y lo reaplica
+unos segundos después de arrancar el sistema (nunca durante BIOS/Limine).
+
+Ese estado guardado no es necesariamente Rainbow Cycle:
+
+\begin{itemize}[nosep]
+  \item el modo cambia con \texttt{Fn+F4} (\texttt{keyboard-aura-cycle}) y con
+        el modo ambiental (\texttt{Super+F4});
+  \item \texttt{asusd} 6.5.0 reaplica al arrancar el modo y los power states,
+        pero \textbf{no} el brillo: si quedó en Off, el teclado arranca
+        apagado aunque el modo guardado sea Rainbow Cycle.
+\end{itemize}
+
+\subsection*{Solución instalada}
+
+\texttt{setup-keyboard-aura-boot.sh} (paso 17) instala:
+
+\begin{itemize}[nosep]
+  \item \texttt{/usr/local/bin/keyboard-aura-boot} — aplica
+        \texttt{asusctl aura effect rainbow-cycle} y
+        \texttt{asusctl leds set med}, reintentando hasta 10 s si \texttt{asusd}
+        todavía no responde.
+  \item \texttt{keyboard-aura-boot.service} — \texttt{Type=oneshot},
+        \texttt{After}/\texttt{Requires} de \texttt{asusd.service} y
+        \texttt{Before=display-manager.service}, para que el efecto quede
+        aplicado antes del login.
+\end{itemize}
+
+Para cambiar efecto o brillo sin tocar el script:
+
+\begin{lstlisting}[style=bash]
+sudo systemctl edit keyboard-aura-boot
+# [Service]
+# Environment=KEYBOARD_AURA_MODE=rainbow-wave
+# Environment=KEYBOARD_AURA_BRIGHTNESS=high
+\end{lstlisting}
+
+\textbf{Límite de firmware:} durante POST/BIOS/Limine el teclado lo controla el
+EC y el sistema operativo todavía no puede escribirle el efecto. El servicio
+aplica justo antes del login; iluminarlo antes no es posible desde Linux.
 
 % ─────────────────────────────────────────────
 \section{Atajos de teclado}
@@ -218,6 +274,14 @@ El script realiza las siguientes acciones:
         \texttt{\textasciitilde/.config/hypr/bindings.conf} si no existen.
 \end{enumerate}
 
+Para que el teclado arranque siempre en Rainbow Cycle, ejecutar además el paso
+17 (requiere root):
+
+\begin{lstlisting}[style=bash]
+cd ~/Documentos/pc-config
+sudo bash setup-keyboard-aura-boot.sh
+\end{lstlisting}
+
 Después de ejecutarlo, recarga Hyprland para que los atajos estén activos:
 
 \begin{lstlisting}[style=bash]
@@ -256,6 +320,21 @@ with open('/dev/input/event3', 'rb') as f:
         print(f'type={t} code={c} val={v}')
 "
 \end{lstlisting}
+
+\subsection*{El teclado arranca apagado (o en otro efecto)}
+
+Es el comportamiento por defecto de Linux: \texttt{asusd} reaplica el último
+modo guardado y no restaura el brillo. Instalar el paso 17
+(\texttt{setup-keyboard-aura-boot.sh}) y comprobar que el servicio esté activo:
+
+\begin{lstlisting}[style=bash]
+systemctl status keyboard-aura-boot.service
+asusctl aura effect --next-mode   # revierte el modo ambiental
+asusctl leds get                  # el brillo no debe estar en Off
+\end{lstlisting}
+
+Recordar que durante BIOS/Limine el teclado lo controla el EC y no se puede
+iluminar desde Linux; el efecto se aplica justo antes del login.
 
 \subsection*{El slash bar no cambia visualmente}
 

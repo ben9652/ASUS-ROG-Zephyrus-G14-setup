@@ -20,6 +20,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 │   ├── setup-voice-commands.sh            ← paso 9: comandos de voz offline
 │   ├── instalar-calcurse.sh               ← paso 15: calendario TUI
 │   ├── setup-steam-display.sh             ← paso 16: escala de Steam multi-monitor
+│   ├── setup-keyboard-aura-boot.sh        ← paso 17: Aura Rainbow Cycle al arranque
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
     ├── luces-rog.tex / .pdf               ← documentación: iluminación ROG
@@ -34,7 +35,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 sudo ./setup.sh
 ```
 
-Ejecuta los pasos **1 al 16** en orden. Si alguno falla, el proceso se detiene e
+Ejecuta los pasos **1 al 17** en orden. Si alguno falla, el proceso se detiene e
 indica exactamente cuál fue el problema.
 
 | Paso | Script | Requiere root |
@@ -52,6 +53,7 @@ indica exactamente cuál fue el problema.
 | 11 | `setup-hyprland-compat.sh` | No |
 | 15 | `instalar-calcurse.sh` | Sí |
 | 16 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
+| 17 | `setup-keyboard-aura-boot.sh` | Sí |
 
 > `setup-monitor-workspaces.sh` **no forma parte del setup global** porque
 > requiere conocer los nombres exactos de tus monitores. Ejecútalo por separado
@@ -118,6 +120,11 @@ Si falta alguna, el script intenta instalarla automáticamente con `pacman`
 El setup también valida `asusd`: si falta `/etc/asusd`, lo crea (con permisos
 de root/sudo), hace `reset-failed` del servicio y lo inicia para evitar el
 error `226/NAMESPACE` al usar `asusctl`.
+
+> El efecto Aura no sobrevive al apagado por sí solo: `asusd` reaplica al
+> arrancar el último modo guardado (`/etc/asusd/aura_*.ron`), pero **no el
+> brillo**. Para que el teclado encienda siempre en Rainbow Cycle, ver el
+> **Paso 17**.
 
 ---
 
@@ -404,6 +411,47 @@ agenda y lista de tareas, todo en la terminal.
 
 El atajo sigue el mismo patrón que el par Música / Música TUI
 (`Super+Shift+M` / `Super+Shift+Alt+M`).
+
+---
+
+## Paso 17 — Aura al arranque (Rainbow Cycle)
+
+**Script:** `scripts/setup-keyboard-aura-boot.sh`
+
+Fuerza el efecto **Rainbow Cycle** y el brillo del teclado en cada arranque,
+después de que `asusd` esté activo y antes de que aparezca el login.
+
+**¿Por qué hace falta?**
+
+- El EC del teclado no conserva el efecto Aura entre apagados. En Windows lo
+  reescribe Armoury Crate/Aura Sync; en Linux lo reescribe `asusd`, que
+  reaplica el último modo guardado en `/etc/asusd/aura_*.ron`.
+- Ese modo guardado cambia con `Fn+F4` y con el modo ambiental (`Super+F4`), así
+  que dejarlo guardado una vez no alcanza para garantizar Rainbow Cycle.
+- `asusd` 6.5.0 reaplica modo y power states al arrancar, pero **no el brillo**:
+  si quedó en Off, el teclado arranca apagado aunque el modo guardado sea
+  Rainbow Cycle.
+
+**Qué instala:**
+
+- `/usr/local/bin/keyboard-aura-boot` — aplica
+  `asusctl aura effect rainbow-cycle` y `asusctl leds set med`, reintentando
+  hasta 10 s si `asusd` todavía no responde.
+- `/etc/systemd/system/keyboard-aura-boot.service` — servicio `oneshot` con
+  `After`/`Requires` de `asusd.service` y `Before=display-manager.service`.
+
+Para cambiar efecto o brillo:
+
+```bash
+sudo systemctl edit keyboard-aura-boot
+# [Service]
+# Environment=KEYBOARD_AURA_MODE=rainbow-wave
+# Environment=KEYBOARD_AURA_BRIGHTNESS=high
+```
+
+> **Límite de firmware:** durante POST/BIOS/Limine el teclado lo controla el EC
+> y Linux todavía no puede escribirle el efecto. El servicio aplica justo antes
+> del login; no existe forma de iluminarlo antes desde el SO.
 
 ---
 
