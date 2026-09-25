@@ -72,6 +72,7 @@ fi
 info "Paso 16 completado."
 
 run_step 17 "Aura del teclado al arranque (Rainbow Cycle)" "setup-keyboard-aura-boot.sh"
+run_step 18 "Manual de energía (man g14-power)"           "setup-g14-power-manual.sh"
 
 echo -e "\n${GREEN}${BOLD}Configuración completa.${NC}"
 echo -e "\n${YELLOW}IMPORTANTE — pasos finales como usuario (no root):${NC}"

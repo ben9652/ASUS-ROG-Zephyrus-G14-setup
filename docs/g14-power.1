@@ -1,0 +1,291 @@
+.TH G14\-POWER 1 "2026-06-21" "ROG Zephyrus G14 GA403UV" "Manual de gestión de energía"
+.
+.SH NOMBRE
+g14\-power \- referencia de comandos para gestión de energía y GPU en el ASUS ROG Zephyrus G14
+.
+.SH DESCRIPCIÓN
+Este manual cubre las herramientas instaladas para gestionar la batería, los perfiles
+de rendimiento, los modos de GPU y TLP en el ASUS ROG Zephyrus G14 GA403UV
+(AMD Ryzen 9 8945HS + NVIDIA RTX 4060 Mobile).
+.
+.SH BATERÍA
+Gestionada por
+.BR asusd (8)
+a través del driver
+.B asus\-wmi.
+.
+.SS Consultar
+.TP
+.B asusctl battery info
+Muestra el límite de carga actual.
+.
+.SS Cambiar límite de carga
+.TP
+.BI "asusctl battery limit " "<20\-100>"
+Establece el porcentaje máximo de carga. El valor se persiste entre reinicios.
+.RS
+.EX
+asusctl battery limit 80    # uso diario, protege la batería
+asusctl battery limit 100   # antes de un viaje largo
+.EE
+.RE
+.
+.TP
+.B asusctl battery oneshot
+Carga completa única hasta el 100%, ignorando el límite configurado solo para
+este ciclo. Al siguiente ciclo vuelve al límite establecido.
+.
+.TP
+.B sudo tlp fullcharge
+Equivalente de TLP: deshabilita el umbral de carga hasta el próximo reinicio.
+.
+.SH PERFILES DE RENDIMIENTO
+Gestionados por
+.BR asusd (8).
+Afectan frecuencia de CPU, velocidad de ventiladores y consumo general.
+.
+.TP
+.B asusctl profile get
+Muestra el perfil activo.
+.
+.TP
+.B asusctl profile list
+Lista los perfiles disponibles.
+.
+.TP
+.B asusctl profile next
+Cicla al siguiente perfil (equivalente a la tecla Fn+F5).
+.
+.TP
+.BI "asusctl profile set " "<perfil>"
+Establece el perfil indicado. Perfiles disponibles:
+.RS
+.TP
+.B Quiet
+Mínimo ruido y consumo. Ventiladores al mínimo. Recomendado para lectura,
+ofimática y trabajo ligero con batería.
+.TP
+.B Balanced
+Equilibrio entre rendimiento y consumo. Uso diario recomendado.
+.TP
+.B Performance
+Máximo rendimiento de CPU y GPU. Recomendado enchufado o con carga intensiva.
+.RE
+.
+.SH GPU
+La laptop tiene dos GPUs:
+.RS
+.TP
+.B AMD Radeon 780M
+iGPU integrada en el Ryzen 9 8945HS. Siempre activa, maneja el display.
+.TP
+.B NVIDIA GeForce RTX 4060 Mobile
+dGPU discreta. Su comportamiento depende del modo configurado en
+.BR /etc/supergfxd.conf .
+.RE
+.
+.SS Consultar estado
+.TP
+.B supergfxctl \-\-get
+Muestra el modo de GPU activo.
+.
+.TP
+.B supergfxctl \-\-supported
+Lista los modos disponibles en el hardware actual.
+.
+.SS Modos disponibles
+.TP
+.B Hybrid
+La NVIDIA se suspende en D3cold cuando no hay carga GPU. Se activa
+automáticamente con PRIME offload. Recomendado para uso diario con batería.
+.TP
+.B AsusMuxDgpu
+La NVIDIA se conecta directamente al display via hardware MUX. Máximo
+rendimiento gráfico y menor latencia. Recomendado para gaming enchufado.
+.
+.SS Cambiar de modo (procedimiento seguro)
+.B ADVERTENCIA:
+No ejecutar
+.B "supergfxctl \-m"
+mientras Hyprland está corriendo. Provoca un crash del compositor.
+El procedimiento correcto es editar el archivo de configuración y reiniciar:
+.
+.RS
+.EX
+sudo nano /etc/supergfxd.conf
+# Cambiar el valor de "mode" a "Hybrid" o "AsusMuxDgpu"
+omarchy system reboot
+.EE
+.RE
+.
+.SS PRIME offload (usar NVIDIA en modo Hybrid)
+En modo Hybrid, es posible ejecutar aplicaciones específicas en la NVIDIA
+sin cambiar el modo global del sistema:
+.
+.TP
+.B Comando directo:
+.EX
+__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia <programa>
+.EE
+.
+.TP
+.B Alias recomendado (agregar a ~/.zshrc):
+.EX
+alias nvidia-run='__NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia'
+# Uso posterior:
+nvidia-run <programa>
+nvidia-run steam
+nvidia-run glxinfo | grep vendor
+.EE
+.
+.SH TLP
+TLP gestiona automáticamente CPU, discos, USB, WiFi y PCIe al cambiar entre
+batería y cargador. El archivo de configuración es
+.BR /etc/tlp.conf .
+.
+.SS Comandos
+.TP
+.B sudo tlp bat
+Aplica el perfil de batería manualmente (útil tras editar la configuración).
+.
+.TP
+.B sudo tlp ac
+Aplica el perfil de cargador manualmente.
+.
+.TP
+.B sudo tlp\-stat
+Muestra el estado completo de todos los subsistemas gestionados por TLP.
+.
+.TP
+.B sudo tlp\-stat \-p
+Solo información de CPU y perfiles de energía.
+.
+.TP
+.B sudo tlp\-stat \-b
+Solo estado de la batería.
+.
+.SS Parámetros clave en /etc/tlp.conf
+Para aplicar cambios tras editar el archivo, ejecutar
+.BR "sudo tlp bat" .
+.
+.TP
+.B CPU_ENERGY_PERF_POLICY_ON_BAT
+Política energética del driver amd-pstate-epp en batería.
+.RS
+.TP
+.B power
+Máximo ahorro. Recomendado para batería.
+.TP
+.B balance_power
+Equilibrado hacia ahorro (valor por defecto de TLP).
+.TP
+.B balance_performance
+Equilibrado hacia rendimiento.
+.TP
+.B performance
+Máximo rendimiento.
+.RE
+.
+.TP
+.B CPU_BOOST_ON_BAT
+Controla el turbo boost del CPU en batería. Valores:
+.B 0
+(desactivado, ahorra batería) o
+.B 1
+(activado, máximo rendimiento).
+.
+.TP
+.B AMDGPU_ABM_LEVEL_ON_BAT
+Nivel de Adaptive Backlight Management del display AMD en batería.
+Reduce el consumo del panel a nivel de hardware.
+.RS
+.TP
+.B 0
+Desactivado.
+.TP
+.B 1
+Leve (imperceptible).
+.TP
+.B 2
+Moderado. Valor recomendado.
+.TP
+.B 3
+Agresivo. Visible como colores ligeramente apagados.
+.RE
+.
+.TP
+.B PCIE_ASPM_ON_BAT
+Política de Active State Power Management para dispositivos PCIe en batería.
+.RS
+.TP
+.B default
+Usa la política del kernel.
+.TP
+.B powersupersave
+Máximo ahorro. Valor recomendado para batería.
+.TP
+.B performance
+Mínima latencia, máximo consumo.
+.RE
+.
+.SH ESCENARIOS
+.SS Máxima duración de batería
+Para trabajo ligero, viaje o reuniones largas sin cargador:
+.EX
+asusctl profile set Quiet
+# En /etc/tlp.conf:
+#   CPU_ENERGY_PERF_POLICY_ON_BAT=power
+#   CPU_BOOST_ON_BAT=0
+sudo tlp bat
+.EE
+.
+.SS Gaming / máximo rendimiento GPU
+.EX
+asusctl profile set Performance
+asusctl battery limit 100
+# Cambiar /etc/supergfxd.conf: "mode": "AsusMuxDgpu"
+omarchy system reboot
+.EE
+.
+.SS Gaming puntual sin cambiar de modo (Hybrid + PRIME)
+.EX
+asusctl profile set Performance
+nvidia-run <juego>
+.EE
+.
+.SS Uso diario equilibrado (configuración actual)
+.EX
+asusctl profile set Balanced
+# /etc/supergfxd.conf: "mode": "Hybrid"
+asusctl battery limit 80
+.EE
+.
+.SH ARCHIVOS
+.TP
+.B /etc/supergfxd.conf
+Configuración del modo de GPU. Editar y reiniciar para aplicar cambios.
+.TP
+.B /etc/tlp.conf
+Configuración de TLP. Aplicar con
+.BR "sudo tlp bat" " o " "sudo tlp ac"
+sin necesidad de reiniciar.
+.TP
+.B /etc/asusd/asusd.ron
+Configuración persistente de asusd (perfiles, límite de batería, etc.).
+Preferir usar
+.B asusctl
+para modificarla.
+.
+.SH VER TAMBIÉN
+.BR tlp (8),
+.BR tlp\-stat (8),
+.BR asusctl (1),
+.BR supergfxctl (1),
+.BR systemctl (1)
+.
+.SH NOTAS
+El modo
+.B Integrated
+(solo iGPU AMD, NVIDIA apagada) no es estable con el kernel 7.x en este
+hardware. El display no inicializa correctamente al arrancar. Evitar hasta
+que haya soporte en kernels futuros o en una versión corregida de supergfxd.

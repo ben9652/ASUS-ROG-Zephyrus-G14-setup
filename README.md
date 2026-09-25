@@ -21,8 +21,10 @@ ASUS-ROG-Zephyrus-G14-setup/
 │   ├── instalar-calcurse.sh               ← paso 15: calendario TUI
 │   ├── setup-steam-display.sh             ← paso 16: escala de Steam multi-monitor
 │   ├── setup-keyboard-aura-boot.sh        ← paso 17: Aura Rainbow Cycle al arranque
+│   ├── setup-g14-power-manual.sh          ← paso 18: manual man g14-power
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
+    ├── g14-power.1                        ← fuente del manual man g14-power
     ├── luces-rog.tex / .pdf               ← documentación: iluminación ROG
     └── instalar-steam.tex / .pdf          ← documentación: instalación Steam
 ```
@@ -35,7 +37,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 sudo ./setup.sh
 ```
 
-Ejecuta los pasos **1 al 17** en orden. Si alguno falla, el proceso se detiene e
+Ejecuta los pasos **1 al 18** en orden. Si alguno falla, el proceso se detiene e
 indica exactamente cuál fue el problema.
 
 | Paso | Script | Requiere root |
@@ -54,6 +56,7 @@ indica exactamente cuál fue el problema.
 | 15 | `instalar-calcurse.sh` | Sí |
 | 16 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
 | 17 | `setup-keyboard-aura-boot.sh` | Sí |
+| 18 | `setup-g14-power-manual.sh` | Sí |
 
 > `setup-monitor-workspaces.sh` **no forma parte del setup global** porque
 > requiere conocer los nombres exactos de tus monitores. Ejecútalo por separado
@@ -452,6 +455,26 @@ sudo systemctl edit keyboard-aura-boot
 > **Límite de firmware:** durante POST/BIOS/Limine el teclado lo controla el EC
 > y Linux todavía no puede escribirle el efecto. El servicio aplica justo antes
 > del login; no existe forma de iluminarlo antes desde el SO.
+
+---
+
+## Paso 18 — Manual de energía (`man g14-power`)
+
+**Script:** `scripts/setup-g14-power-manual.sh`
+
+Instala la página de manual **g14-power(1)** en `/usr/local/man/man1/` (fuera
+del alcance de pacman), con la referencia de comandos de `asusctl`,
+`supergfxctl` y TLP aplicados a este modelo: batería, perfiles de
+rendimiento, modos de GPU, PRIME offload y escenarios de uso.
+
+La fuente se versiona en `docs/g14-power.1` y el script regenera el índice
+con `mandb`, por lo que queda disponible con:
+
+```bash
+man g14-power
+```
+
+Es idempotente: si el manual ya está instalado y sin cambios, no lo reescribe.
 
 ---
 
