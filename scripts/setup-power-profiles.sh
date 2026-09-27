@@ -186,7 +186,37 @@ else
     warn "  sudo sed -i 's/^CriticalPowerAction=.*/CriticalPowerAction=Hibernate/' $UPOWER_CONF"
 fi
 
-# ── 7. Recargar Hyprland si está corriendo ────────────────────────────────────
+# ── 7. NVIDIA: desactivar preservación de VRAM (necesario para hibernar) ──────
+# gpu-screen-recorder instala /usr/lib/modprobe.d/gsr-nvidia.conf con
+# NVreg_PreserveVideoMemoryAllocations=1, incompatible con el default de
+# nvidia-utils NVreg_UseKernelSuspendNotifiers=1. Con esa combinación el
+# driver devuelve -EIO en nv_pmops_freeze y la hibernación se cuelga
+# (y el resume se aborta). La pantalla interna está en la iGPU AMD, así que
+# la preservación de VRAM no es necesaria.
+NVIDIA_OVERRIDE="/etc/modprobe.d/zz-nvidia-no-vram-preserve.conf"
+if [[ -w /etc/modprobe.d ]]; then
+    if [[ ! -f "$NVIDIA_OVERRIDE" ]] || ! grep -q 'NVreg_PreserveVideoMemoryAllocations=0' "$NVIDIA_OVERRIDE"; then
+        cat > "$NVIDIA_OVERRIDE" << 'EOF'
+# Override de gsr-nvidia.conf (gpu-screen-recorder):
+# PreserveVideoMemoryAllocations=1 requiere /proc/driver/nvidia/suspend y es
+# incompatible con NVreg_UseKernelSuspendNotifiers=1 (default de nvidia-utils).
+# Rompe la hibernación: nv_pmops_freeze devuelve -EIO y el resume se aborta.
+options nvidia NVreg_PreserveVideoMemoryAllocations=0
+EOF
+        echo "  ✓ $NVIDIA_OVERRIDE"
+        if command -v mkinitcpio &>/dev/null; then
+            mkinitcpio -P >/dev/null 2>&1 \
+                && echo "  ✓ initramfs regenerado" \
+                || warn "mkinitcpio falló; regenerá el initramfs a mano antes de reiniciar."
+        fi
+    else
+        echo "  · Override NVIDIA ya presente, no se modifica"
+    fi
+else
+    warn "No se puede escribir en /etc/modprobe.d. Ejecuta el script con sudo para aplicarlo."
+fi
+
+# ── 8. Recargar Hyprland si está corriendo ────────────────────────────────────
 if command -v hyprctl &>/dev/null && hyprctl version &>/dev/null 2>&1; then
     hyprctl reload
     echo "  ✓ Hyprland recargado"
@@ -197,3 +227,4 @@ echo "Configuración completada."
 echo ""
 echo "  Fn+F5  →  ciclar perfil de energía (Silencio 60Hz / Equilibrado 120Hz / Rendimiento 120Hz)"
 echo "  AC     →  se cambia automáticamente (desconectado=Silencio, conectado=Equilibrado)"
+echo "  Batería →  hibernación automática al 5% (advertencia crítica al 7%)"
