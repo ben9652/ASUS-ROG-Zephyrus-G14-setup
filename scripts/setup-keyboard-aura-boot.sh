@@ -176,29 +176,29 @@ if [[ -n "$REAL_HOME" ]]; then
 
     cat > "$WATCHER_PATH" << 'PYEOF'
 #!/usr/bin/env python3
-"""keyboard-aura-watch: reaplica el efecto Aura al desbloquear Hyprland.
+"""keyboard-aura-watch: reaplica el efecto Aura al desbloquear la pantalla.
 
 Omarchy apaga el teclado al bloquear (omarchy-system-lock) y lo restaura con
 brightnessctl al desbloquear. Si el estado guardado quedó en 0, el teclado
-queda apagado; este watcher escucha el socket de eventos de Hyprland y
-reaplica el efecto + brillo cuando la capa de hyprlock se cierra.
+queda apagado. hyprlock usa el protocolo ext-session-lock (no wlr-layer-shell),
+así que no hay evento de desbloqueo en el socket IPC de Hyprland: este watcher
+vigila el proceso hyprlock y reaplica el efecto + brillo cuando termina.
 """
 
-import glob
-import os
-import socket
 import subprocess
 import time
 
-SOCKET_GLOB = f"/run/user/{os.getuid()}/hypr/*/.socket2.sock"
 APPLY_CMD = "/usr/local/bin/keyboard-aura-boot"
+POLL_SECONDS = 1
 
 
-def find_socket():
-    candidates = glob.glob(SOCKET_GLOB)
-    if not candidates:
-        return None
-    return max(candidates, key=os.path.getmtime)
+def hyprlock_running():
+    result = subprocess.run(
+        ["pgrep", "-x", "hyprlock"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    return result.returncode == 0
 
 
 def apply_aura():
@@ -206,27 +206,20 @@ def apply_aura():
 
 
 def main():
+    was_locked = hyprlock_running()
+
     while True:
-        socket_path = find_socket()
-        if not socket_path:
-            time.sleep(2)
-            continue
+        time.sleep(POLL_SECONDS)
+        is_locked = hyprlock_running()
 
-        try:
-            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as sock:
-                sock.connect(socket_path)
-                with sock.makefile("r") as stream:
-                    for line in stream:
-                        if line.startswith("closelayer>>") and "hyprlock" in line:
-                            apply_aura()
-                            # Omarchy programa un "off" con 3 s de retardo al
-                            # bloquear; se reaplica una vez más por si acaso.
-                            time.sleep(4)
-                            apply_aura()
-        except OSError:
-            pass
+        if was_locked and not is_locked:
+            apply_aura()
+            # Omarchy programa un "off" con 3 s de retardo al bloquear;
+            # se reaplica una vez más por si acaso.
+            time.sleep(4)
+            apply_aura()
 
-        time.sleep(2)
+        was_locked = is_locked
 
 
 if __name__ == "__main__":
@@ -254,7 +247,9 @@ EOF
     chown "$REAL_USER:$REAL_USER" "$USER_SERVICE_PATH"
     echo "  ✓ $USER_SERVICE_PATH"
 
-    if run_user_systemctl daemon-reload && run_user_systemctl enable --now keyboard-aura-watch.service; then
+    if run_user_systemctl daemon-reload \
+        && run_user_systemctl enable keyboard-aura-watch.service \
+        && run_user_systemctl restart keyboard-aura-watch.service; then
         echo "  ✓ keyboard-aura-watch.service habilitado y activo"
     else
         echo "  ⚠ No se pudo habilitar keyboard-aura-watch.service ahora."

@@ -185,10 +185,11 @@ Ver la sección \ref{sec:arranque} para el detalle y el motivo.
 
 \subsection{\texttt{keyboard-aura-watch}}
 
-Daemon Python de usuario que escucha el socket de eventos de Hyprland y
-reaplica el Aura cuando se cierra la capa de \texttt{hyprlock} (desbloqueo). Se
-instala en \texttt{\textasciitilde/.local/bin/} y corre vía el servicio de
-usuario \texttt{keyboard-aura-watch.service}.
+Daemon Python de usuario que vigila el proceso \texttt{hyprlock} y reaplica el
+Aura al desbloquear. No usa el socket IPC de Hyprland porque \texttt{hyprlock}
+usa \texttt{ext-session-lock} (no \texttt{wlr-layer-shell}) y no emite evento
+de capa. Se instala en \texttt{\textasciitilde/.local/bin/} y corre vía el
+servicio de usuario \texttt{keyboard-aura-watch.service}.
 
 % ─────────────────────────────────────────────
 \section{Efecto persistente (arranque, suspensión y desbloqueo)}
@@ -235,9 +236,10 @@ Ese estado guardado no es necesariamente Rainbow Cycle:
         \texttt{hybrid-sleep.target}, \texttt{suspend-then-hibernate.target}),
         para reaplicar el efecto al volver de suspensión.
   \item \texttt{\textasciitilde/.local/bin/keyboard-aura-watch} — daemon Python
-        de usuario que escucha el socket de eventos de Hyprland y reaplica el
-        Aura al cerrarse la capa de \texttt{hyprlock} (desbloqueo), mediante el
-        servicio de usuario \texttt{keyboard-aura-watch.service}.
+        de usuario que vigila el proceso \texttt{hyprlock} y reaplica el Aura
+        al desbloquear (\texttt{hyprlock} usa \texttt{ext-session-lock} y no
+        emite evento de capa), mediante el servicio de usuario
+        \texttt{keyboard-aura-watch.service}.
 \end{itemize}
 
 Para cambiar efecto o brillo sin tocar el script:

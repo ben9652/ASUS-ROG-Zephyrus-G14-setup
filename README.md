@@ -454,9 +454,9 @@ desbloquear la pantalla.
 
 **Qué instala (usuario):**
 
-- `~/.local/bin/keyboard-aura-watch` — daemon Python que escucha el socket de
-  eventos de Hyprland y reaplica el Aura al cerrarse la capa de `hyprlock`
-  (desbloqueo).
+- `~/.local/bin/keyboard-aura-watch` — daemon Python que vigila el proceso
+  `hyprlock` y reaplica el Aura al desbloquear. No usa el socket IPC de
+  Hyprland porque `hyprlock` usa `ext-session-lock` y no emite evento de capa.
 - `~/.config/systemd/user/keyboard-aura-watch.service` — servicio de usuario
   habilitado en `graphical-session.target`.
 
