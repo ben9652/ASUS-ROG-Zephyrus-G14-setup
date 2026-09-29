@@ -177,14 +177,21 @@ continuo; el cambio de modo se aplicará en el próximo evento.
 
 \subsection{\texttt{keyboard-aura-boot}}
 
-Aplica el efecto Aura y el brillo al arranque del sistema. No vive en
-\texttt{\textasciitilde/.local/bin/} sino en \texttt{/usr/local/bin/}, y se
-ejecuta mediante el servicio
-\texttt{/etc/systemd/system/keyboard-aura-boot.service}. Ver la sección
-\ref{sec:arranque} para el detalle y el motivo.
+Aplica el efecto Aura y el brillo al arranque, al volver de suspensión y al
+desbloquear. No vive en \texttt{\textasciitilde/.local/bin/} sino en
+\texttt{/usr/local/bin/}, y se ejecuta mediante los servicios
+\texttt{keyboard-aura-boot.service} y \texttt{keyboard-aura-resume.service}.
+Ver la sección \ref{sec:arranque} para el detalle y el motivo.
+
+\subsection{\texttt{keyboard-aura-watch}}
+
+Daemon Python de usuario que escucha el socket de eventos de Hyprland y
+reaplica el Aura cuando se cierra la capa de \texttt{hyprlock} (desbloqueo). Se
+instala en \texttt{\textasciitilde/.local/bin/} y corre vía el servicio de
+usuario \texttt{keyboard-aura-watch.service}.
 
 % ─────────────────────────────────────────────
-\section{Efecto al arranque (Rainbow Cycle)}
+\section{Efecto persistente (arranque, suspensión y desbloqueo)}
 \label{sec:arranque}
 
 \subsection*{Por qué el teclado no arranca en Rainbow Cycle}
@@ -202,7 +209,12 @@ Ese estado guardado no es necesariamente Rainbow Cycle:
         el modo ambiental (\texttt{Super+F4});
   \item \texttt{asusd} 6.5.0 reaplica al arrancar el modo y los power states,
         pero \textbf{no} el brillo: si quedó en Off, el teclado arranca
-        apagado aunque el modo guardado sea Rainbow Cycle.
+        apagado aunque el modo guardado sea Rainbow Cycle. Lo mismo ocurre al
+        volver de suspensión/hibernación;
+  \item Omarchy apaga el teclado al bloquear la pantalla
+        (\texttt{omarchy-system-lock}) y lo restaura al desbloquear con
+        \texttt{brightnessctl}; si el estado guardado quedó en 0, el teclado
+        queda apagado tras el desbloqueo.
 \end{itemize}
 
 \subsection*{Solución instalada}
@@ -218,6 +230,14 @@ Ese estado guardado no es necesariamente Rainbow Cycle:
         \texttt{After}/\texttt{Requires} de \texttt{asusd.service} y
         \texttt{Before=display-manager.service}, para que el efecto quede
         aplicado antes del login.
+  \item \texttt{keyboard-aura-resume.service} — \texttt{oneshot},
+        \texttt{WantedBy=suspend.target} (y \texttt{hibernate.target},
+        \texttt{hybrid-sleep.target}, \texttt{suspend-then-hibernate.target}),
+        para reaplicar el efecto al volver de suspensión.
+  \item \texttt{\textasciitilde/.local/bin/keyboard-aura-watch} — daemon Python
+        de usuario que escucha el socket de eventos de Hyprland y reaplica el
+        Aura al cerrarse la capa de \texttt{hyprlock} (desbloqueo), mediante el
+        servicio de usuario \texttt{keyboard-aura-watch.service}.
 \end{itemize}
 
 Para cambiar efecto o brillo sin tocar el script:
@@ -275,8 +295,8 @@ El script realiza las siguientes acciones:
         \texttt{\textasciitilde/.config/hypr/bindings.conf} si no existen.
 \end{enumerate}
 
-Para que el teclado arranque siempre en Rainbow Cycle, ejecutar además el paso
-17 (requiere root):
+Para que el teclado se mantenga siempre en Rainbow Cycle (arranque, suspensión
+y desbloqueo), ejecutar además el paso 17 (requiere root):
 
 \begin{lstlisting}[style=bash]
 cd ~/Documentos/pc-config
@@ -330,6 +350,8 @@ modo guardado y no restaura el brillo. Instalar el paso 17
 
 \begin{lstlisting}[style=bash]
 systemctl status keyboard-aura-boot.service
+systemctl status keyboard-aura-resume.service
+systemctl --user status keyboard-aura-watch.service
 asusctl aura effect --next-mode   # revierte el modo ambiental
 asusctl leds get                  # el brillo no debe estar en Off
 \end{lstlisting}

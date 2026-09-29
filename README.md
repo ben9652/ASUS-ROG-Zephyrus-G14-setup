@@ -20,7 +20,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 │   ├── setup-voice-commands.sh            ← paso 9: comandos de voz offline
 │   ├── instalar-calcurse.sh               ← paso 15: calendario TUI
 │   ├── setup-steam-display.sh             ← paso 16: escala de Steam multi-monitor
-│   ├── setup-keyboard-aura-boot.sh        ← paso 17: Aura Rainbow Cycle al arranque
+│   ├── setup-keyboard-aura-boot.sh        ← paso 17: Aura persistente (boot/suspend/unlock)
 │   ├── setup-g14-power-manual.sh          ← paso 18: manual man g14-power
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
@@ -417,12 +417,13 @@ El atajo sigue el mismo patrón que el par Música / Música TUI
 
 ---
 
-## Paso 17 — Aura al arranque (Rainbow Cycle)
+## Paso 17 — Aura persistente (arranque, suspensión y desbloqueo)
 
 **Script:** `scripts/setup-keyboard-aura-boot.sh`
 
-Fuerza el efecto **Rainbow Cycle** y el brillo del teclado en cada arranque,
-después de que `asusd` esté activo y antes de que aparezca el login.
+Fuerza el efecto **Rainbow Cycle** y el brillo del teclado en cada arranque
+(después de `asusd` y antes del login), al volver de suspensión/hibernación y al
+desbloquear la pantalla.
 
 **¿Por qué hace falta?**
 
@@ -433,15 +434,28 @@ después de que `asusd` esté activo y antes de que aparezca el login.
   que dejarlo guardado una vez no alcanza para garantizar Rainbow Cycle.
 - `asusd` 6.5.0 reaplica modo y power states al arrancar, pero **no el brillo**:
   si quedó en Off, el teclado arranca apagado aunque el modo guardado sea
-  Rainbow Cycle.
+  Rainbow Cycle. Al volver de suspensión pasa lo mismo.
+- Omarchy apaga el teclado al bloquear (`omarchy-system-lock`) y lo restaura al
+  desbloquear con `brightnessctl`; si el estado guardado quedó en 0, el teclado
+  queda apagado tras el desbloqueo.
 
-**Qué instala:**
+**Qué instala (sistema):**
 
 - `/usr/local/bin/keyboard-aura-boot` — aplica
   `asusctl aura effect rainbow-cycle --speed med` y `asusctl leds set med`,
   reintentando hasta 10 s si `asusd` todavía no responde.
 - `/etc/systemd/system/keyboard-aura-boot.service` — servicio `oneshot` con
   `After`/`Requires` de `asusd.service` y `Before=display-manager.service`.
+- `/etc/systemd/system/keyboard-aura-resume.service` — `oneshot` que se ejecuta
+  después de `suspend.target` / `hibernate.target`.
+
+**Qué instala (usuario):**
+
+- `~/.local/bin/keyboard-aura-watch` — daemon Python que escucha el socket de
+  eventos de Hyprland y reaplica el Aura al cerrarse la capa de `hyprlock`
+  (desbloqueo).
+- `~/.config/systemd/user/keyboard-aura-watch.service` — servicio de usuario
+  habilitado en `graphical-session.target`.
 
 Para cambiar efecto o brillo:
 
