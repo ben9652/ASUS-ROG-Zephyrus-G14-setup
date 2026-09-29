@@ -438,8 +438,8 @@ después de que `asusd` esté activo y antes de que aparezca el login.
 **Qué instala:**
 
 - `/usr/local/bin/keyboard-aura-boot` — aplica
-  `asusctl aura effect rainbow-cycle` y `asusctl leds set med`, reintentando
-  hasta 10 s si `asusd` todavía no responde.
+  `asusctl aura effect rainbow-cycle --speed med` y `asusctl leds set med`,
+  reintentando hasta 10 s si `asusd` todavía no responde.
 - `/etc/systemd/system/keyboard-aura-boot.service` — servicio `oneshot` con
   `After`/`Requires` de `asusd.service` y `Before=display-manager.service`.
 
@@ -449,6 +449,7 @@ Para cambiar efecto o brillo:
 sudo systemctl edit keyboard-aura-boot
 # [Service]
 # Environment=KEYBOARD_AURA_MODE=rainbow-wave
+# Environment=KEYBOARD_AURA_SPEED=high
 # Environment=KEYBOARD_AURA_BRIGHTNESS=high
 ```
 

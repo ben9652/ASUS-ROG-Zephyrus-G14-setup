@@ -211,7 +211,7 @@ Ese estado guardado no es necesariamente Rainbow Cycle:
 
 \begin{itemize}[nosep]
   \item \texttt{/usr/local/bin/keyboard-aura-boot} — aplica
-        \texttt{asusctl aura effect rainbow-cycle} y
+        \texttt{asusctl aura effect rainbow-cycle --speed med} y
         \texttt{asusctl leds set med}, reintentando hasta 10 s si \texttt{asusd}
         todavía no responde.
   \item \texttt{keyboard-aura-boot.service} — \texttt{Type=oneshot},
@@ -226,6 +226,7 @@ Para cambiar efecto o brillo sin tocar el script:
 sudo systemctl edit keyboard-aura-boot
 # [Service]
 # Environment=KEYBOARD_AURA_MODE=rainbow-wave
+# Environment=KEYBOARD_AURA_SPEED=high
 # Environment=KEYBOARD_AURA_BRIGHTNESS=high
 \end{lstlisting}
 

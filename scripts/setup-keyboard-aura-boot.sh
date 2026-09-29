@@ -41,20 +41,49 @@ cat > "$SCRIPT_PATH" << 'EOF'
 # keyboard-aura-boot: aplica el efecto Aura y el brillo del teclado al arranque.
 # Lo ejecuta keyboard-aura-boot.service después de asusd.service.
 #
-# MODE / BRIGHTNESS se pueden sobrescribir con variables de entorno del unit:
+# Variables configurables (se pueden sobrescribir desde el unit):
 #   sudo systemctl edit keyboard-aura-boot
 #   [Service]
 #   Environment=KEYBOARD_AURA_MODE=rainbow-wave
+#   Environment=KEYBOARD_AURA_SPEED=high
 #   Environment=KEYBOARD_AURA_BRIGHTNESS=high
 
 set -u
 
 MODE="${KEYBOARD_AURA_MODE:-rainbow-cycle}"
+SPEED="${KEYBOARD_AURA_SPEED:-med}"
 BRIGHTNESS="${KEYBOARD_AURA_BRIGHTNESS:-med}"
+
+# asusctl 6.5.0: cada modo tiene su propio conjunto de opciones obligatorias
+case "$MODE" in
+    static)
+        effect_cmd=(asusctl aura effect static -c "${KEYBOARD_AURA_COLOUR:-ff00ff}")
+        ;;
+    breathe)
+        effect_cmd=(asusctl aura effect breathe \
+            --colour "${KEYBOARD_AURA_COLOUR:-ff00ff}" \
+            --colour2 "${KEYBOARD_AURA_COLOUR2:-0000ff}" \
+            --speed "$SPEED")
+        ;;
+    rainbow-cycle)
+        effect_cmd=(asusctl aura effect rainbow-cycle --speed "$SPEED")
+        ;;
+    rainbow-wave)
+        effect_cmd=(asusctl aura effect rainbow-wave \
+            --direction "${KEYBOARD_AURA_DIRECTION:-right}" \
+            --speed "$SPEED")
+        ;;
+    pulse)
+        effect_cmd=(asusctl aura effect pulse -c "${KEYBOARD_AURA_COLOUR:-ff00ff}")
+        ;;
+    *)
+        effect_cmd=(asusctl aura effect "$MODE" --speed "$SPEED")
+        ;;
+esac
 
 # asusd puede tardar un instante en aceptar conexiones D-Bus tras el arranque
 for _ in $(seq 1 10); do
-    if asusctl aura effect "$MODE" >/dev/null 2>&1; then
+    if "${effect_cmd[@]}" >/dev/null 2>&1; then
         asusctl leds set "$BRIGHTNESS" >/dev/null 2>&1 || true
         exit 0
     fi
