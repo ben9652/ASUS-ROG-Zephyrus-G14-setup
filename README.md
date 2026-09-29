@@ -22,10 +22,12 @@ ASUS-ROG-Zephyrus-G14-setup/
 │   ├── setup-steam-display.sh             ← paso 16: escala de Steam multi-monitor
 │   ├── setup-keyboard-aura-boot.sh        ← paso 17: Aura persistente (boot/suspend/unlock)
 │   ├── setup-g14-power-manual.sh          ← paso 18: manual man g14-power
+│   ├── setup-speaker-fix.sh               ← paso 19: parlantes internos (ALC285)
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
     ├── g14-power.1                        ← fuente del manual man g14-power
     ├── luces-rog.tex / .pdf               ← documentación: iluminación ROG
+    ├── parlantes-internos.tex / .pdf      ← documentación: audio de parlantes
     └── instalar-steam.tex / .pdf          ← documentación: instalación Steam
 ```
 
@@ -37,7 +39,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 sudo ./setup.sh
 ```
 
-Ejecuta los pasos **1 al 18** en orden. Si alguno falla, el proceso se detiene e
+Ejecuta los pasos **1 al 19** en orden. Si alguno falla, el proceso se detiene e
 indica exactamente cuál fue el problema.
 
 | Paso | Script | Requiere root |
@@ -57,6 +59,7 @@ indica exactamente cuál fue el problema.
 | 16 | `setup-steam-display.sh` | No (corre como usuario real vía `sudo -u $SUDO_USER`) |
 | 17 | `setup-keyboard-aura-boot.sh` | Sí |
 | 18 | `setup-g14-power-manual.sh` | Sí |
+| 19 | `setup-speaker-fix.sh` | Sí |
 
 > `setup-monitor-workspaces.sh` **no forma parte del setup global** porque
 > requiere conocer los nombres exactos de tus monitores. Ejecútalo por separado
@@ -490,6 +493,39 @@ man g14-power
 ```
 
 Es idempotente: si el manual ya está instalado y sin cambios, no lo reescribe.
+
+---
+
+## Paso 19 — Parlantes internos (ALC285 + CS35L56)
+
+**Script:** `scripts/setup-speaker-fix.sh`  
+**Documentación:** `docs/parlantes-internos.pdf`
+
+Los parlantes internos pueden quedar **sin sonido** aunque PipeWire muestre las
+barras de volumen moviéndose: el codec Realtek ALC285 tiene los mixers
+`Speaker` en 0%/off y `Bass Speaker` off, por lo que no sale señal hacia los
+amplificadores Cirrus Logic CS35L56.
+
+Además, ese estado quedaba guardado en `/var/lib/alsa/asound.state`, así que
+`alsa-restore.service` lo reaplicaba en cada arranque.
+
+**Qué instala:**
+
+- `/usr/local/bin/asus-g14-speaker-fix` — detecta la tarjeta del ALC285 y
+  ejecuta `amixer sset 'Speaker' 100% unmute` + `sset 'Bass Speaker' on`.
+- `/etc/systemd/system/asus-g14-speaker-fix.service` — `oneshot` que corre al
+  arrancar y al volver de suspensión/hibernación.
+- Guarda el estado ALSA corregido con `alsactl store`.
+
+Verificación:
+
+```bash
+amixer -c 2 sget Speaker         # 100% y on
+amixer -c 2 sget 'Bass Speaker'  # on
+```
+
+> Para el micrófono interno hay un diagnóstico aparte en
+> `docs/microfono-interno.pdf`.
 
 ---
 

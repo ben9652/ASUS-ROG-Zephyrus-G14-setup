@@ -1,0 +1,180 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[spanish]{babel}
+\usepackage{geometry}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+
+\geometry{margin=2.5cm}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue!70!black,
+}
+
+\lstdefinestyle{bash}{
+  language=bash,
+  basicstyle=\small\ttfamily,
+  backgroundcolor=\color{gray!10},
+  frame=single,
+  rulecolor=\color{gray!40},
+  breaklines=true,
+  showstringspaces=false,
+}
+
+\title{%
+  \textbf{Parlantes internos sin sonido}\\[0.4em]
+  \large Diagnóstico y solución en el ASUS ROG Zephyrus G14 GA403UV\\
+  con CachyOS + Omarchy (PipeWire / WirePlumber)
+}
+\author{pc-config}
+\date{Septiembre de 2026}
+
+\begin{document}
+
+\maketitle
+\tableofcontents
+\newpage
+
+% ─────────────────────────────────────────────
+\section{Resumen}
+
+Los parlantes internos del \textbf{ASUS ROG Zephyrus G14 GA403UV} dejaron de
+sonar: PipeWire mostraba las barras de nivel moviéndose al reproducir audio
+(por ejemplo, un video de YouTube), pero no salía sonido por los parlantes.
+
+La causa no era el hardware, ni PipeWire, ni los amplificadores: el codec
+\textbf{Realtek ALC285} quedó con los mixers \texttt{Speaker} en \textbf{0\%/off}
+y \texttt{Bass Speaker} \textbf{off}, de modo que no salía señal hacia los
+amplificadores \textbf{Cirrus Logic CS35L56}.
+
+Peor aún: ese estado roto estaba guardado en
+\texttt{/var/lib/alsa/asound.state}, por lo que
+\texttt{alsa-restore.service} lo reaplicaba en \textbf{cada arranque}.
+
+La solución es forzar los mixers, guardar el estado ALSA corregido y agregar un
+servicio que los reaplique al arrancar y al volver de suspensión.
+
+% ─────────────────────────────────────────────
+\section{Entorno del sistema}
+
+\begin{center}
+\begin{tabular}{ll}
+  \toprule
+  Componente & Versión / valor \\
+  \midrule
+  Portátil            & ASUS ROG Zephyrus G14 GA403UV \\
+  Sistema operativo   & CachyOS (base Arch Linux) \\
+  Kernel activo       & \texttt{linux-cachyos} 7.0.9-1 \\
+  Codec de audio      & Realtek ALC285 (tarjeta 2, HDA) \\
+  Amplificadores      & 2 × Cirrus Logic CS35L56 (I2C) para altavoces \\
+  Servidor de audio   & PipeWire 1.6.9 + WirePlumber 0.5.17 \\
+  Utilidades ALSA     & \texttt{alsa-utils} \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+% ─────────────────────────────────────────────
+\section{Síntoma}
+
+\begin{itemize}[nosep]
+  \item PipeWire/WirePlumber muestran el sink analógico como activo, sin mute y
+        al 100\%, y las barras de nivel se mueven al reproducir.
+  \item No se escucha nada por los parlantes internos (auriculares y HDMI no
+        se vieron afectados).
+  \item En \texttt{alsamixer} (o \texttt{amixer}) se observa:
+        \texttt{Speaker} en 0\%/off y \texttt{Bass Speaker} off, mientras que
+        \texttt{AMP1 Speaker} y \texttt{AMP2 Speaker} están en $\sim$89\%.
+\end{itemize}
+
+% ─────────────────────────────────────────────
+\section{Diagnóstico}
+
+El audio digital llega correctamente hasta los amplificadores: durante la
+reproducción, los dispositivos I2C de los CS35L56 pasan a estado
+\texttt{active} y los controles \texttt{AMP1/AMP2 Speaker} están en su nivel
+calibrado (400/448, 0.00\,dB).
+
+El problema está en la etapa anterior: el ALC285 tiene dos controles que
+funcionan como compuerta de los parlantes:
+
+\begin{lstlisting}[style=bash]
+$ amixer -c 2 sget Speaker
+  Front Left: Playback 0 [0%] [-65.25dB] [off]
+  Front Right: Playback 0 [0%] [-65.25dB] [off]
+
+$ amixer -c 2 sget 'Bass Speaker'
+  Front Left: Playback [off]
+  Front Right: Playback [off]
+\end{lstlisting}
+
+Además, el estado guardado de ALSA contenía esos valores rotos:
+
+\begin{lstlisting}[style=bash]
+awk '/^state.Generic_1/,/^state.Controller/' /var/lib/alsa/asound.state \
+  | grep -A2 -E "name '(Speaker|Bass Speaker)"
+# value.0 0 / value.1 0          <- Speaker Playback Volume
+# value.0 false / value.1 false  <- Speaker Playback Switch
+# value.0 false / value.1 false  <- Bass Speaker Playback Switch
+\end{lstlisting}
+
+Por eso \texttt{alsa-restore.service} volvía a dejar los parlantes mudos en
+cada arranque.
+
+% ─────────────────────────────────────────────
+\section{Solución}
+
+\subsection*{Aplicar y guardar}
+
+\begin{lstlisting}[style=bash]
+amixer -c 2 sset Speaker 100% unmute
+amixer -c 2 sset 'Bass Speaker' on
+sudo alsactl store
+\end{lstlisting}
+
+\subsection*{Persistencia con systemd}
+
+El paso 19 (\texttt{setup-speaker-fix.sh}) instala:
+
+\begin{itemize}[nosep]
+  \item \texttt{/usr/local/bin/asus-g14-speaker-fix} — detecta la tarjeta del
+        ALC285 y fuerza ambos mixers. No usa el número de tarjeta fijo: lo
+        obtiene de \texttt{aplay -l} (con fallback por control
+        \texttt{Bass Speaker}).
+  \item \texttt{/etc/systemd/system/asus-g14-speaker-fix.service} —
+        \texttt{Type=oneshot}, \texttt{After=alsa-restore.service} y
+        \texttt{WantedBy=multi-user.target suspend.target hibernate.target
+        hybrid-sleep.target suspend-then-hibernate.target}, para que corra al
+        arrancar y al volver de suspensión aunque el estado guardado se haya
+        vuelto a romper.
+\end{itemize}
+
+Verificación:
+
+\begin{lstlisting}[style=bash]
+systemctl status asus-g14-speaker-fix.service
+amixer -c 2 sget Speaker         # 100% y on
+amixer -c 2 sget 'Bass Speaker'  # on
+\end{lstlisting}
+
+% ─────────────────────────────────────────────
+\section{Notas}
+
+\begin{itemize}[nosep]
+  \item No tocar \texttt{AMP1 Speaker} / \texttt{AMP2 Speaker} por encima de
+        0.00\,dB: forman parte de la protección de los parlantes.
+  \item Si en el futuro se cambia el perfil de la tarjeta o se conectan
+        auriculares y el problema reaparece, ejecutar
+        \texttt{asus-g14-speaker-fix} (o reiniciar el servicio).
+  \item El micrófono interno es un problema distinto: ver
+        \texttt{microfono-interno.pdf}.
+\end{itemize}
+
+\end{document}
