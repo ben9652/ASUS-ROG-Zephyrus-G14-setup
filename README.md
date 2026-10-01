@@ -23,6 +23,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 │   ├── setup-keyboard-aura-boot.sh        ← paso 17: Aura persistente (boot/suspend/unlock)
 │   ├── setup-g14-power-manual.sh          ← paso 18: manual man g14-power
 │   ├── setup-speaker-fix.sh               ← paso 19: parlantes internos (ALC285)
+│   ├── setup-bluetooth-audio-fix.sh       ← paso 20: audio Bluetooth (SBC-XQ + rutas)
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
     ├── g14-power.1                        ← fuente del manual man g14-power
@@ -39,7 +40,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 sudo ./setup.sh
 ```
 
-Ejecuta los pasos **1 al 19** en orden. Si alguno falla, el proceso se detiene e
+Ejecuta los pasos **1 al 20** en orden. Si alguno falla, el proceso se detiene e
 indica exactamente cuál fue el problema.
 
 | Paso | Script | Requiere root |
@@ -60,6 +61,7 @@ indica exactamente cuál fue el problema.
 | 17 | `setup-keyboard-aura-boot.sh` | Sí |
 | 18 | `setup-g14-power-manual.sh` | Sí |
 | 19 | `setup-speaker-fix.sh` | Sí |
+| 20 | `setup-bluetooth-audio-fix.sh` | Sí |
 
 > `setup-monitor-workspaces.sh` **no forma parte del setup global** porque
 > requiere conocer los nombres exactos de tus monitores. Ejecútalo por separado
@@ -526,6 +528,44 @@ amixer -c 2 sget 'Bass Speaker'  # on
 
 > Para el micrófono interno hay un diagnóstico aparte en
 > `docs/microfono-interno.pdf`.
+
+---
+
+## Paso 20 — Audio Bluetooth (MT7922)
+
+**Script:** `scripts/setup-bluetooth-audio-fix.sh`
+
+Corrige dos problemas de audio por Bluetooth del adaptador MediaTek MT7922:
+
+**1. Ruido blanco por los auriculares.** El firmware del MT7922 falla con el
+códec **AAC**: el audio se escucha como estática aunque el volumen y el perfil
+`a2dp-sink` estén correctos. El script deshabilita AAC y deja **SBC-XQ** como
+códec preferido (SBC de respaldo), conservando mSBC/CVSD para el micrófono.
+
+**2. Audio pegado a los parlantes internos.** WirePlumber guarda el destino
+("target") por aplicación: si en algún momento una app (p. ej. Chromium) quedó
+asociada a los parlantes internos, la restaura ahí en cada sesión aunque el
+dispositivo predeterminado sea el auricular. El script desactiva la
+restauración de destino para las **salidas** de audio, así todas siguen el sink
+predeterminado (las entradas de micrófono conservan su enrutado).
+
+**Qué instala** (en `~/.config/wireplumber/wireplumber.conf.d/` del usuario que
+invocó `sudo`):
+
+- `bluetooth-codecs.conf` — `bluez5.codecs = [ sbc_xq sbc msbc cvsd ]` y
+  `bluez5.enable-msbc = true`.
+- `stream-no-target-restore.conf` — `state.restore-target = false` para
+  `Stream/Output/Audio`.
+
+Verificación (como usuario):
+
+```bash
+pactl list sinks | grep api.bluez5.codec   # sbc_xq
+pactl get-default-sink                      # bluez_output.*
+```
+
+> Reiniciar WirePlumber puede hacer que la tarjeta Bluetooth desaparezca hasta
+> que se reconecte el auricular.
 
 ---
 
