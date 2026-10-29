@@ -14,7 +14,10 @@
 
 set -euo pipefail
 
-HYPR_CONF="$HOME/.config/hypr/hyprland.conf"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hypr-lua.sh"
+
+HYPR_MONITORS="$HOME/.config/hypr/monitors.lua"
 LAPTOP_MONITOR="${LAPTOP_MONITOR:-eDP-1}"
 EXTERNAL_MONITOR="${EXTERNAL_MONITOR:-HDMI-A-1}"
 TS=$(date +%s)
@@ -23,7 +26,7 @@ TS=$(date +%s)
 
 echo "==> Monitores detectados por Hyprland:"
 if command -v hyprctl &>/dev/null; then
-    hyprctl monitors | grep "^Monitor" | awk '{print "    •", $2}'
+    hyprctl monitors 2>/dev/null | grep "^Monitor" | awk '{print "    •", $2}' || true
 else
     echo "    (hyprctl no disponible; usando valores por defecto)"
 fi
@@ -36,81 +39,40 @@ echo "    Para cambiar los nombres, usa las variables de entorno:"
 echo "    LAPTOP_MONITOR=eDP-1 EXTERNAL_MONITOR=DP-1 bash $0"
 echo ""
 
-# ── Validar que hyprland.conf existe ──────────────────────────────────────────
+# ── Validar que monitors.lua existe ───────────────────────────────────────────
 
-if [[ ! -f "$HYPR_CONF" ]]; then
-    echo "ERROR: No se encontró $HYPR_CONF"
-    echo "       Asegúrate de que Hyprland está configurado antes de ejecutar este script."
+if [[ ! -f "$HYPR_MONITORS" ]]; then
+    echo "ERROR: No se encontró $HYPR_MONITORS"
+    echo "       Asegúrate de que Omarchy 4.x está configurado antes de ejecutar este script."
     exit 1
 fi
 
-# ── Bloque de configuración a insertar ────────────────────────────────────────
-
-BLOCK_MARKER="# === Asignación de workspaces por monitor ==="
+# ── Bloque de configuración a insertar (Omarchy 4.x: Lua) ─────────────────────
 
 BLOCK=$(cat <<EOF
+hl.workspace_rule({ workspace = "1", monitor = "${LAPTOP_MONITOR}", default = true })
+hl.workspace_rule({ workspace = "2", monitor = "${LAPTOP_MONITOR}" })
 
-$BLOCK_MARKER
-# Workspaces 1-2 en la pantalla integrada de la laptop
-workspace = 1, monitor:${LAPTOP_MONITOR}, default:true
-workspace = 2, monitor:${LAPTOP_MONITOR}
-
-# Workspaces 3-10 en el monitor externo
-workspace = 3,  monitor:${EXTERNAL_MONITOR}, default:true
-workspace = 4,  monitor:${EXTERNAL_MONITOR}
-workspace = 5,  monitor:${EXTERNAL_MONITOR}
-workspace = 6,  monitor:${EXTERNAL_MONITOR}
-workspace = 7,  monitor:${EXTERNAL_MONITOR}
-workspace = 8,  monitor:${EXTERNAL_MONITOR}
-workspace = 9,  monitor:${EXTERNAL_MONITOR}
-workspace = 10, monitor:${EXTERNAL_MONITOR}
+hl.workspace_rule({ workspace = "3", monitor = "${EXTERNAL_MONITOR}", default = true })
+hl.workspace_rule({ workspace = "4", monitor = "${EXTERNAL_MONITOR}" })
+hl.workspace_rule({ workspace = "5", monitor = "${EXTERNAL_MONITOR}" })
+hl.workspace_rule({ workspace = "6", monitor = "${EXTERNAL_MONITOR}" })
+hl.workspace_rule({ workspace = "7", monitor = "${EXTERNAL_MONITOR}" })
+hl.workspace_rule({ workspace = "8", monitor = "${EXTERNAL_MONITOR}" })
+hl.workspace_rule({ workspace = "9", monitor = "${EXTERNAL_MONITOR}" })
+hl.workspace_rule({ workspace = "10", monitor = "${EXTERNAL_MONITOR}" })
 EOF
 )
 
 # ── Idempotencia: reemplazar bloque si ya existe, o añadirlo ──────────────────
 
-echo "==> [1/2] Actualizando $HYPR_CONF..."
+echo "==> [1/2] Actualizando $HYPR_MONITORS..."
 
-cp "$HYPR_CONF" "$HYPR_CONF.bak.$TS"
-echo "    Backup: $HYPR_CONF.bak.$TS"
+cp "$HYPR_MONITORS" "$HYPR_MONITORS.bak.$TS"
+echo "    Backup: $HYPR_MONITORS.bak.$TS"
 
-if grep -qF "$BLOCK_MARKER" "$HYPR_CONF"; then
-    # Eliminar el bloque anterior (desde el marcador hasta la siguiente línea vacía doble)
-    python3 - "$HYPR_CONF" "$BLOCK_MARKER" <<'PYEOF'
-import sys
-
-path = sys.argv[1]
-marker = sys.argv[2]
-
-with open(path, 'r') as f:
-    content = f.read()
-
-start = content.find('\n' + marker)
-if start == -1:
-    start = content.find(marker)
-    if start == -1:
-        sys.exit(0)
-else:
-    start += 1  # incluir el \n previo
-
-# Buscar el final del bloque: dos saltos de línea seguidos tras el marcador
-end = content.find('\n\n', start + len(marker))
-if end == -1:
-    end = len(content)
-else:
-    end += 2  # incluir los dos \n
-
-content = content[:start] + content[end:]
-
-with open(path, 'w') as f:
-    f.write(content)
-PYEOF
-    echo "    Bloque anterior eliminado."
-fi
-
-# Añadir el nuevo bloque al final
-printf '%s\n' "$BLOCK" >> "$HYPR_CONF"
-echo "    Bloque de workspaces añadido."
+hypr_lua_upsert_block "$HYPR_MONITORS" "monitor-workspaces" "$BLOCK"
+echo "    Bloque de workspaces sincronizado."
 
 # ── Recargar Hyprland ─────────────────────────────────────────────────────────
 
@@ -128,7 +90,7 @@ if command -v hyprctl &>/dev/null; then
         echo "$errors" | sed 's/^/      /'
         echo ""
         echo "    Puedes revertir con:"
-        echo "    cp $HYPR_CONF.bak.$TS $HYPR_CONF && hyprctl reload"
+        echo "    cp $HYPR_MONITORS.bak.$TS $HYPR_MONITORS && hyprctl reload"
     fi
 else
     echo "    hyprctl no disponible. Recarga Hyprland manualmente."
