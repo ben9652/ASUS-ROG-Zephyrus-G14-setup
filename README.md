@@ -1,7 +1,12 @@
 # ASUS ROG Zephyrus G14 GA403UV — Setup
 
 Configuración inicial del sistema para el **ASUS ROG Zephyrus G14 GA403UV**
-con **CachyOS** y el entorno **Omarchy** (Hyprland + Wayland).
+con **CachyOS** y el entorno **Omarchy 4.x (Quattro)** (Hyprland + Wayland).
+
+> Omarchy 4.x migró la configuración de Hyprland de `.conf` a **Lua**
+> (`~/.config/hypr/*.lua`) y reemplazó Waybar por el **shell de Omarchy**
+> (Quickshell). Estos scripts escriben bloques idempotentes en los archivos
+> Lua y nunca modifican `/usr/share/omarchy`.
 
 ## Estructura
 
@@ -9,6 +14,7 @@ con **CachyOS** y el entorno **Omarchy** (Hyprland + Wayland).
 ASUS-ROG-Zephyrus-G14-setup/
 ├── setup.sh                               ← script de configuración global
 ├── scripts/
+│   ├── lib/hypr-lua.sh                    ← helpers para escribir bloques .lua idempotentes
 │   ├── setup-keyboard-layout-switcher.sh  ← paso 1: idioma y touchpad
 │   ├── setup-keyboard-ambient.sh          ← paso 2: iluminación del teclado
 │   ├── instalar-vscode.sh                 ← paso 3: instalación de VSCode
@@ -24,6 +30,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 │   ├── setup-g14-power-manual.sh          ← paso 18: manual man g14-power
 │   ├── setup-speaker-fix.sh               ← paso 19: parlantes internos (ALC285)
 │   ├── setup-bluetooth-audio-fix.sh       ← paso 20: audio Bluetooth (SBC-XQ + rutas)
+│   ├── setup-keyboard-backlight-timeout.sh ← paso 21: apagado por inactividad
 │   └── setup-monitor-workspaces.sh        ← standalone: workspaces por monitor
 └── docs/
     ├── g14-power.1                        ← fuente del manual man g14-power
@@ -40,7 +47,7 @@ ASUS-ROG-Zephyrus-G14-setup/
 sudo ./setup.sh
 ```
 
-Ejecuta los pasos **1 al 20** en orden. Si alguno falla, el proceso se detiene e
+Ejecuta los pasos **1 al 21** en orden. Si alguno falla, el proceso se detiene e
 indica exactamente cuál fue el problema.
 
 | Paso | Script | Requiere root |
@@ -62,6 +69,7 @@ indica exactamente cuál fue el problema.
 | 18 | `setup-g14-power-manual.sh` | Sí |
 | 19 | `setup-speaker-fix.sh` | Sí |
 | 20 | `setup-bluetooth-audio-fix.sh` | Sí |
+| 21 | `setup-keyboard-backlight-timeout.sh` | Sí |
 
 > `setup-monitor-workspaces.sh` **no forma parte del setup global** porque
 > requiere conocer los nombres exactos de tus monitores. Ejecútalo por separado
@@ -73,25 +81,26 @@ indica exactamente cuál fue el problema.
 
 **Script:** `scripts/setup-keyboard-layout-switcher.sh`
 
-Configura la alternancia de distribución de teclado **US ↔ Latam** y añade un
-indicador del idioma activo en la barra de **Waybar**.
+Configura la alternancia de distribución de teclado **US ↔ Latam** y asegura
+el indicador del idioma activo en la barra del **shell de Omarchy**
+(`omarchy.keyboard-layout`; Omarchy 4.x ya no usa Waybar).
 
-Se usa un keybinding de Hyprland (`Alt+\``) en lugar de la opción XKB
+Se usa un keybinding de Hyprland (`Super+\``) en lugar de la opción XKB
 `grp:alt_shift_toggle` porque esta colisiona con `Shift+Alt+Tab` (cambio de
 foco entre ventanas).
 
 | Atajo | Acción |
 |---|---|
-| `Alt+`` ` | Cambia entre US y Latam |
+| `Super+`` ` | Cambia entre US y Latam |
 
-Modifica:
-- `~/.config/hypr/input.conf` — `kb_layout = us,latam`, `kb_options =` (vacío), `natural_scroll = true`
-- `~/.config/hypr/bindings.conf` — keybinding `Alt+grave → switchxkblayout`
-- `~/.config/waybar/config.jsonc` — añade el módulo `hyprland/language`
-- `~/.config/waybar/style.css` — estilos del indicador de idioma
+Modifica (Omarchy 4.x / Quattro, configuración Lua):
+- `~/.config/hypr/input.lua` — `kb_layout = "us,latam"`, `kb_options = ""`, `natural_scroll = true`
+- `~/.config/hypr/bindings.lua` — keybinding `Super+grave → switchxkblayout`
+- Barra del shell de Omarchy — asegura el widget `omarchy.keyboard-layout`
 
-Crea una copia de seguridad con marca de tiempo (`.bak.TIMESTAMP`) de cada
-archivo antes de modificarlo. Es idempotente.
+Los cambios se escriben como bloques idempotentes (`omarchy-g14:...`), así que
+se puede ejecutar varias veces sin duplicar nada ni pisar el resto de tu
+configuración.
 
 ---
 
@@ -106,7 +115,7 @@ comportamiento original de `Fn+F4` para ciclar efectos Aura.
 | Atajo | Acción |
 |---|---|
 | `Fn+F4` | Cicla efectos Aura (Static, Breathe, Rainbow…) |
-| `Shift+Fn+F4` | Cicla brillo del teclado |
+| `Super+Shift+F4` | Elige un color fijo para el teclado (paleta) |
 | `Super+F4` | Activa/desactiva modo ambiental (screen-sync) |
 | `Super+\` | Cicla modos del slash bar (barra LED de la tapa) |
 
@@ -118,6 +127,11 @@ Instala en `~/.local/bin/`:
   restaura el efecto Aura que había antes.
 - `keyboard-aura-cycle` — avanza al siguiente efecto Aura (equivalente a
   `Fn+F4` en Armoury Crate). Si el modo ambiental está activo, lo detiene primero.
+- `keyboard-aura-static` — fija un color (efecto Static). Sin argumentos abre
+  la paleta de `zenity`; `keyboard-aura-static screen` toma el color de la
+  pantalla con `hyprpicker` y `keyboard-aura-static ff00ff` aplica el hex
+  directo. El color queda guardado y sobrevive arranques y desbloqueos (ver
+  Paso 17).
 - `keyboard-slash-cycle` — cicla entre los 16 modos del slash bar de la tapa
   (Static, Bounce, Slash, Loading, BitStream…).
 
@@ -259,6 +273,14 @@ Crea el servicio de usuario `~/.config/systemd/user/display-hz-sync.service`
 `/etc/udev/rules.d/99-power-profile.rules` que cambia el perfil PPD al
 desconectar (`power-saver`) o conectar (`balanced`) el cargador.
 
+También configura la hibernación por batería crítica (UPower: advertencia al
+7%, hibernación al 5%), el override de NVIDIA para que la VRAM no rompa el
+resume, y asegura que el hook de Omarchy
+`/usr/lib/systemd/system-sleep/keyboard-backlight` sea **ejecutable**:
+`systemd-sleep` solo corre scripts con `+x`, y sin ese hook el controlador del
+teclado ASUS puede bloquear S4 (hibernación colgada, pantalla apagada,
+ventiladores al máximo y batería agotándose).
+
 > El hardware es un **ASUS ROG GA403UV**: `asusd` está en ejecución pero
 > `asusctl` no funciona correctamente con esta versión del firmware/kernel.
 > Se usa `power-profiles-daemon` como capa de control exclusiva.
@@ -363,15 +385,14 @@ anotar con Satty.
 
 **Script:** `scripts/setup-hyprland-compat.sh`
 
-Corrige incompatibilidades de configuración en
-`~/.local/share/omarchy/default/hypr/looknfeel.conf` para Hyprland 0.48+:
+**Obsoleto en Omarchy 4.x (Quattro).** Las incompatibilidades que corregía
+(`col.border_locked_* = -1` y `dwindle.pseudotile`) ya vienen resueltas de
+origen y la configuración pasó a `looknfeel.lua` dentro de `/usr/share/omarchy`
+(solo lectura, propiedad del paquete).
 
-- Reemplaza `col.border_locked_active = -1` y
-  `col.border_locked_inactive = -1` por valores válidos.
-- Comenta `pseudotile` en el bloque `dwindle` (opción eliminada).
-
-El script es idempotente y puede recargar Hyprland automáticamente si hay
-sesión activa.
+El script se mantiene como **no-op informativo** para no romper `setup.sh`: si
+detecta una instalación vieja de Omarchy 3.x, avisa y recomienda
+`omarchy update`.
 
 ---
 
@@ -390,8 +411,8 @@ Resultado: en la laptop se ve muy pequeño, y en el monitor Full HD excede el
 tamaño de la pantalla.
 
 **Solución:** añade `STEAM_FORCE_DESKTOPUI_SCALING=1` en
-`~/.config/hypr/envs.conf`, forzando a Steam a usar escala 1x sin
-auto-detección de DPI.
+`~/.config/hypr/envs.lua` (cargado con `require("hypr.envs")` desde
+`hyprland.lua`), forzando a Steam a usar escala 1x sin auto-detección de DPI.
 
 ```bash
 # Aplicar corrección de escala
@@ -426,7 +447,8 @@ El atajo sigue el mismo patrón que el par Música / Música TUI
 
 **Script:** `scripts/setup-keyboard-aura-boot.sh`
 
-Fuerza el efecto **Rainbow Cycle** y el brillo del teclado en cada arranque
+Reaplica el **efecto Aura guardado por `asusd`** (Rainbow Cycle, color fijo de
+`keyboard-aura-static`, Breathe, etc.) y el brillo del teclado en cada arranque
 (después de `asusd` y antes del login), al volver de suspensión/hibernación y al
 desbloquear la pantalla.
 
@@ -435,20 +457,19 @@ desbloquear la pantalla.
 - El EC del teclado no conserva el efecto Aura entre apagados. En Windows lo
   reescribe Armoury Crate/Aura Sync; en Linux lo reescribe `asusd`, que
   reaplica el último modo guardado en `/etc/asusd/aura_*.ron`.
-- Ese modo guardado cambia con `Fn+F4` y con el modo ambiental (`Super+F4`), así
-  que dejarlo guardado una vez no alcanza para garantizar Rainbow Cycle.
 - `asusd` 6.5.0 reaplica modo y power states al arrancar, pero **no el brillo**:
-  si quedó en Off, el teclado arranca apagado aunque el modo guardado sea
-  Rainbow Cycle. Al volver de suspensión pasa lo mismo.
+  si quedó en Off, el teclado arranca apagado aunque haya un modo guardado. Al
+  volver de suspensión pasa lo mismo.
 - Omarchy apaga el teclado al bloquear (`omarchy-system-lock`) y lo restaura al
   desbloquear con `brightnessctl`; si el estado guardado quedó en 0, el teclado
   queda apagado tras el desbloqueo.
 
 **Qué instala (sistema):**
 
-- `/usr/local/bin/keyboard-aura-boot` — aplica
-  `asusctl aura effect rainbow-cycle --speed med` y `asusctl leds set med`,
-  reintentando hasta 10 s si `asusd` todavía no responde.
+- `/usr/local/bin/keyboard-aura-boot` — lee el efecto guardado (`LedModeData` de
+  asusd) y lo reaplica junto con `asusctl leds set med`, reintentando hasta
+  10 s si `asusd` todavía no responde. Si algo falla, cae en Rainbow Cycle; si
+  preferís forzar un modo fijo, definí `KEYBOARD_AURA_MODE` en el unit.
 - `/etc/systemd/system/keyboard-aura-boot.service` — servicio `oneshot` con
   `After`/`Requires` de `asusd.service` y `Before=display-manager.service`.
 - `/etc/systemd/system/keyboard-aura-resume.service` — `oneshot` que se ejecuta
@@ -569,6 +590,38 @@ pactl get-default-sink                      # bluez_output.*
 
 ---
 
+## Paso 21 — Apagado del teclado por inactividad
+
+**Script:** `scripts/setup-keyboard-backlight-timeout.sh`
+
+Replica el comportamiento del teclado ROG en Windows: el LED queda encendido
+mientras se teclea, se **apaga tras 180 s sin actividad** y vuelve al brillo
+anterior al presionar cualquier tecla. En Linux el LED quedaba encendido
+indefinidamente (por ejemplo, mirando un video, que inhibe el idle/lock de
+Omarchy y el timeout del firmware no está expuesto por el EC).
+
+**Qué instala** (usuario):
+
+- `~/.local/bin/keyboard-backlight-timeout` — daemon Python que lee los eventos
+  de `/dev/input/event*` (requiere estar en el grupo `input`), guarda el brillo
+  y lo apaga con `brightnessctl` tras la inactividad, restaurándolo al primer
+  `keypress` (se excluyen los botones de mouse/touchpad).
+- `~/.config/systemd/user/keyboard-backlight-timeout.service` — servicio de
+  usuario habilitado en `graphical-session.target`.
+
+Para cambiar el tiempo:
+
+```bash
+sudo systemctl edit keyboard-backlight-timeout
+# [Service]
+# Environment=KEYBOARD_BACKLIGHT_IDLE=120
+```
+
+> No interfiere con el apagado del teclado al bloquear de Omarchy: si el LED ya
+> estaba en 0, el daemon no lo toca (solo restaura lo que apagó él).
+
+---
+
 ## Script standalone — Workspaces por monitor
 
 **Script:** `scripts/setup-monitor-workspaces.sh`
@@ -590,8 +643,9 @@ Los nombres de monitor se pueden sobrescribir con variables de entorno:
 EXTERNAL_MONITOR=DP-1 bash scripts/setup-monitor-workspaces.sh
 ```
 
-Crea un backup del `hyprland.conf` antes de modificarlo y es idempotente
-(reemplaza el bloque si ya existe).
+Escribe las reglas `hl.workspace_rule(...)` en `~/.config/hypr/monitors.lua`
+(Omarchy 4.x), crea un backup con marca de tiempo y es idempotente (reemplaza
+el bloque `omarchy-g14:monitor-workspaces` si ya existe).
 
 ---
 
