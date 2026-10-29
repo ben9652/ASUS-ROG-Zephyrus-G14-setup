@@ -19,8 +19,10 @@
 set -euo pipefail
 
 BINDIR="$HOME/.local/bin"
-HYPR_BINDINGS="$HOME/.config/hypr/bindings.conf"
+HYPR_BINDINGS="$HOME/.config/hypr/bindings.lua"
 SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hypr-lua.sh"
 
 warn() {
     echo "  [WARN] $*"
@@ -149,20 +151,14 @@ else
     echo "  · Omitiendo udev rule (requiere root). Ejecuta el script con sudo para instalarla."
 fi
 
-# ── 5. Keybinding en Hyprland ─────────────────────────────────────────────────
-BINDING_COMMENT="# Fn+F5 (XF86Launch4): ciclar perfil de energía (power-saver / balanced / performance)"
-BINDING_LINE="bindd = , XF86Launch4, Power profile cycle, exec, power-profile-cycle"
+# ── 5. Keybinding en Hyprland (Omarchy 4.x: bindings.lua) ─────────────────────
+BINDING_BLOCK=$(cat <<'LUA'
+o.bind("XF86Launch4", "Power profile cycle", "power-profile-cycle")
+LUA
+)
 
-if ! grep -qF "XF86Launch4" "$HYPR_BINDINGS" 2>/dev/null; then
-    {
-        echo ""
-        echo "$BINDING_COMMENT"
-        echo "$BINDING_LINE"
-    } >> "$HYPR_BINDINGS"
-    echo "  ✓ Binding añadido a $HYPR_BINDINGS"
-else
-    echo "  · Binding XF86Launch4 ya existe, no se modifica"
-fi
+hypr_lua_upsert_block "$HYPR_BINDINGS" "power-profiles" "$BINDING_BLOCK"
+echo "  ✓ Binding XF86Launch4 sincronizado en $HYPR_BINDINGS"
 
 # ── 6. UPower: hibernar a batería crítica ─────────────────────────────────────
 UPOWER_CONF="/etc/UPower/UPower.conf"
@@ -216,7 +212,31 @@ else
     warn "No se puede escribir en /etc/modprobe.d. Ejecuta el script con sudo para aplicarlo."
 fi
 
-# ── 8. Recargar Hyprland si está corriendo ────────────────────────────────────
+# ── 8. Hook que apaga el teclado antes de hibernar ────────────────────────────
+# El controlador del teclado ASUS puede bloquear S4 si los LEDs están activos
+# (hibernación colgada con fans al máximo). Omarchy instala el hook
+# /usr/lib/systemd/system-sleep/keyboard-backlight, pero systemd-sleep solo
+# ejecuta scripts con permiso de ejecución y Omarchy lo copia sin +x.
+SLEEP_HOOK="/usr/lib/systemd/system-sleep/keyboard-backlight"
+OMARCHY_HOOK="$HOME/.local/share/omarchy/default/systemd/system-sleep/keyboard-backlight"
+if [[ -w /usr/lib/systemd/system-sleep ]]; then
+    if [[ ! -e "$SLEEP_HOOK" && -f "$OMARCHY_HOOK" ]]; then
+        cp -p "$OMARCHY_HOOK" "$SLEEP_HOOK"
+        echo "  ✓ $SLEEP_HOOK instalado"
+    fi
+    if [[ -e "$SLEEP_HOOK" && ! -x "$SLEEP_HOOK" ]]; then
+        chmod +x "$SLEEP_HOOK"
+        echo "  ✓ $SLEEP_HOOK ahora es ejecutable"
+    fi
+    if [[ -e "$SLEEP_HOOK" && -x "$SLEEP_HOOK" ]]; then
+        echo "  · $SLEEP_HOOK listo (apaga el teclado antes de hibernar)"
+    fi
+else
+    warn "No se puede escribir en /usr/lib/systemd/system-sleep (requiere root)."
+    warn "Ejecutá: sudo chmod +x /usr/lib/systemd/system-sleep/keyboard-backlight"
+fi
+
+# ── 9. Recargar Hyprland si está corriendo ────────────────────────────────────
 if command -v hyprctl &>/dev/null && hyprctl version &>/dev/null 2>&1; then
     hyprctl reload
     echo "  ✓ Hyprland recargado"
