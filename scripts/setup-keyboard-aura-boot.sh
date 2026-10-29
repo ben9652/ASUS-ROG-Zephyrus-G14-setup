@@ -63,15 +63,19 @@ run_user_systemctl() {
         systemctl --user "$@"
 }
 
-# ── 1. Wrapper: aplica efecto + brillo con reintentos ─────────────────────────
+# ── 1. Wrapper: aplica el efecto guardado + brillo con reintentos ─────────────
 cat > "$SCRIPT_PATH" << 'EOF'
 #!/usr/bin/env bash
-# keyboard-aura-boot: aplica el efecto Aura y el brillo del teclado.
+# keyboard-aura-boot: reaplica el efecto Aura guardado y el brillo del teclado.
 # Lo ejecutan keyboard-aura-boot.service (arranque),
 # keyboard-aura-resume.service (volver de suspensión) y keyboard-aura-watch
 # (al desbloquear la pantalla).
 #
-# Variables configurables (se pueden sobrescribir desde el unit):
+# Por defecto respeta el último efecto guardado por asusd (LedModeData): así el
+# color fijo elegido con keyboard-aura-static o el efecto elegido con Fn+F4
+# sobreviven arranques, suspensiones y desbloqueos.
+#
+# Para forzar un modo fijo desde el unit:
 #   sudo systemctl edit keyboard-aura-boot
 #   [Service]
 #   Environment=KEYBOARD_AURA_MODE=rainbow-wave
@@ -80,36 +84,96 @@ cat > "$SCRIPT_PATH" << 'EOF'
 
 set -u
 
-MODE="${KEYBOARD_AURA_MODE:-rainbow-cycle}"
-SPEED="${KEYBOARD_AURA_SPEED:-med}"
 BRIGHTNESS="${KEYBOARD_AURA_BRIGHTNESS:-med}"
+AURA_OBJ="xyz.ljones.Asusd /xyz/ljones/aura/19b6_3_4 xyz.ljones.Aura"
 
-# asusctl 6.5.0: cada modo tiene su propio conjunto de opciones obligatorias
-case "$MODE" in
-    static)
-        effect_cmd=(asusctl aura effect static -c "${KEYBOARD_AURA_COLOUR:-ff00ff}")
-        ;;
-    breathe)
-        effect_cmd=(asusctl aura effect breathe \
-            --colour "${KEYBOARD_AURA_COLOUR:-ff00ff}" \
-            --colour2 "${KEYBOARD_AURA_COLOUR2:-0000ff}" \
-            --speed "$SPEED")
-        ;;
-    rainbow-cycle)
-        effect_cmd=(asusctl aura effect rainbow-cycle --speed "$SPEED")
-        ;;
-    rainbow-wave)
-        effect_cmd=(asusctl aura effect rainbow-wave \
-            --direction "${KEYBOARD_AURA_DIRECTION:-right}" \
-            --speed "$SPEED")
-        ;;
-    pulse)
-        effect_cmd=(asusctl aura effect pulse -c "${KEYBOARD_AURA_COLOUR:-ff00ff}")
-        ;;
-    *)
-        effect_cmd=(asusctl aura effect "$MODE" --speed "$SPEED")
-        ;;
-esac
+rgb_hex() { printf '%02x%02x%02x' "$1" "$2" "$3"; }
+
+mode_name() {
+    case "$1" in
+        0)  echo "static" ;;
+        1)  echo "breathe" ;;
+        2)  echo "rainbow-cycle" ;;
+        3)  echo "rainbow-wave" ;;
+        10) echo "pulse" ;;
+        *)  echo "" ;;
+    esac
+}
+
+build_from_saved() {
+    local data vals mode zone r1 g1 b1 r2 g2 b2 speed dir name
+
+    data="$(busctl get-property $AURA_OBJ LedModeData 2>/dev/null)" || return 1
+    [[ -z "$data" ]] && return 1
+
+    vals="$(printf '%s' "$data" | sed -e 's/(uu(yyy)(yyy)ss)//' -e 's/[()"]//g')"
+    read -r mode zone r1 g1 b1 r2 g2 b2 speed dir <<< "$vals"
+    [[ "$mode" =~ ^[0-9]+$ ]] || return 1
+
+    speed="${speed,,}"
+    dir="${dir,,}"
+    [[ -z "$speed" || "$speed" == "0" ]] && speed="med"
+    [[ -z "$dir" ]] && dir="right"
+
+    name="$(mode_name "$mode")"
+    case "$name" in
+        static)
+            effect_cmd=(asusctl aura effect static -c "$(rgb_hex "$r1" "$g1" "$b1")")
+            ;;
+        breathe)
+            effect_cmd=(asusctl aura effect breathe \
+                --colour "$(rgb_hex "$r1" "$g1" "$b1")" \
+                --colour2 "$(rgb_hex "$r2" "$g2" "$b2")" \
+                --speed "$speed")
+            ;;
+        rainbow-cycle)
+            effect_cmd=(asusctl aura effect rainbow-cycle --speed "$speed")
+            ;;
+        rainbow-wave)
+            effect_cmd=(asusctl aura effect rainbow-wave \
+                --speed "$speed" --direction "$dir")
+            ;;
+        pulse)
+            effect_cmd=(asusctl aura effect pulse -c "$(rgb_hex "$r1" "$g1" "$b1")")
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+if [[ -n "${KEYBOARD_AURA_MODE:-}" ]]; then
+    # Override manual por entorno
+    SPEED="${KEYBOARD_AURA_SPEED:-med}"
+    case "$KEYBOARD_AURA_MODE" in
+        static)
+            effect_cmd=(asusctl aura effect static -c "${KEYBOARD_AURA_COLOUR:-ff00ff}")
+            ;;
+        breathe)
+            effect_cmd=(asusctl aura effect breathe \
+                --colour "${KEYBOARD_AURA_COLOUR:-ff00ff}" \
+                --colour2 "${KEYBOARD_AURA_COLOUR2:-0000ff}" \
+                --speed "$SPEED")
+            ;;
+        rainbow-cycle)
+            effect_cmd=(asusctl aura effect rainbow-cycle --speed "$SPEED")
+            ;;
+        rainbow-wave)
+            effect_cmd=(asusctl aura effect rainbow-wave \
+                --direction "${KEYBOARD_AURA_DIRECTION:-right}" \
+                --speed "$SPEED")
+            ;;
+        pulse)
+            effect_cmd=(asusctl aura effect pulse -c "${KEYBOARD_AURA_COLOUR:-ff00ff}")
+            ;;
+        *)
+            effect_cmd=(asusctl aura effect "$KEYBOARD_AURA_MODE" --speed "$SPEED")
+            ;;
+    esac
+else
+    # Último efecto guardado por asusd (color fijo, Rainbow Cycle, etc.)
+    build_from_saved || effect_cmd=(asusctl aura effect rainbow-cycle --speed "med")
+fi
 
 # asusd puede tardar un instante en aceptar conexiones D-Bus tras el arranque
 for _ in $(seq 1 10); do
@@ -120,7 +184,7 @@ for _ in $(seq 1 10); do
     sleep 1
 done
 
-echo "keyboard-aura-boot: no se pudo aplicar el efecto '$MODE'" >&2
+echo "keyboard-aura-boot: no se pudo reaplicar el efecto Aura" >&2
 exit 1
 EOF
 chmod +x "$SCRIPT_PATH"
@@ -261,8 +325,8 @@ else
 fi
 
 echo ""
-echo "Listo. El teclado aplica Rainbow Cycle al arrancar (tras asusd, antes del login),"
-echo "al volver de suspensión y al desbloquear la pantalla."
-echo "Para cambiar efecto o brillo:"
-echo "  sudo systemctl edit keyboard-aura-boot   # [Service] Environment=..."
-echo "  o editá MODE/SPEED/BRIGHTNESS en $SCRIPT_PATH"
+echo "Listo. El teclado reaplica su efecto guardado (Rainbow Cycle, color fijo, etc.)"
+echo "y el brillo al arrancar (tras asusd, antes del login), al volver de suspensión"
+echo "y al desbloquear la pantalla."
+echo "Para forzar un modo fijo:"
+echo "  sudo systemctl edit keyboard-aura-boot   # [Service] Environment=KEYBOARD_AURA_MODE=..."
