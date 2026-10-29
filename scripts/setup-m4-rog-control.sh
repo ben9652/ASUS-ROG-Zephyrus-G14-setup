@@ -12,7 +12,10 @@
 
 set -euo pipefail
 
-HYPR_BINDINGS="$HOME/.config/hypr/bindings.conf"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hypr-lua.sh"
+
+HYPR_BINDINGS="$HOME/.config/hypr/bindings.lua"
 
 # ── 1. Instalar rog-control-center si no está ─────────────────────────────────
 if ! command -v rog-control-center &>/dev/null; then
@@ -23,24 +26,18 @@ else
     echo "  · rog-control-center ya está instalado"
 fi
 
-# ── 2. Keybinding en Hyprland ─────────────────────────────────────────────────
-BINDING_COMMENT="# M4 / Armoury Crate button (XF86Launch1): abrir ROG Control Center"
-BINDING_LINE="binddl = , XF86Launch1, ROG Control Center, exec, omarchy-launch-or-focus rog-control-center \"uwsm-app -- rog-control-center\""
+# ── 2. Keybinding en Hyprland (Omarchy 4.x: bindings.lua) ─────────────────────
+BINDING_BLOCK=$(cat <<'LUA'
+o.bind("XF86Launch1", "ROG Control Center", { launch = "rog-control-center", focus = "rog-control-center" }, { locked = true })
+LUA
+)
 
-if ! grep -qF "XF86Launch1" "$HYPR_BINDINGS" 2>/dev/null; then
-    {
-        echo ""
-        echo "$BINDING_COMMENT"
-        echo "$BINDING_LINE"
-    } >> "$HYPR_BINDINGS"
-    echo "  ✓ Binding añadido a $HYPR_BINDINGS"
-else
-    echo "  · Binding XF86Launch1 ya existe, no se modifica"
-fi
+hypr_lua_upsert_block "$HYPR_BINDINGS" "m4-rog-control" "$BINDING_BLOCK"
+echo "  ✓ Binding XF86Launch1 sincronizado en $HYPR_BINDINGS"
 
 # ── 3. Recargar Hyprland si está corriendo ────────────────────────────────────
 if command -v hyprctl &>/dev/null && hyprctl version &>/dev/null 2>&1; then
-    hyprctl reload
+    hypr_lua_reload
     echo "  ✓ Hyprland recargado"
 fi
 
