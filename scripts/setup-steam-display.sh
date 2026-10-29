@@ -13,11 +13,10 @@
 #     · En el Full HD   → se ve enorme, excede la pantalla (la UI 2x sobre 1080p)
 #
 # SOLUCIÓN APLICADA:
-#   1. STEAM_FORCE_DESKTOPUI_SCALING=1 en ~/.config/hypr/envs.conf
+#   1. STEAM_FORCE_DESKTOPUI_SCALING=1 en ~/.config/hypr/envs.lua
 #      → Fuerza la UI de Steam a escala 1x sin auto-detección de DPI.
-#   2. windowrule maxsize en ~/.config/hypr/hyprland.conf
-#      → Garantiza que la ventana principal de Steam no exceda 1890x1060,
-#        por si Steam tiene guardada una geometría grande de sesiones anteriores.
+#   2. Regla de tamaño en ~/.config/hypr/hyprland.lua (solo si Omarchy no la trae)
+#      → Garantiza que la ventana principal de Steam no exceda 1100x700.
 #   3. (Opcional) Borrado de geometría guardada de Steam
 #      → Limpia el tamaño/posición almacenado para que las nuevas reglas apliquen
 #        desde cero en el primer arranque tras la corrección.
@@ -34,9 +33,11 @@ set -euo pipefail
 RESET_GEOMETRY=false
 [[ "${1:-}" == "--reset" ]] && RESET_GEOMETRY=true
 
-HYPR_ENVS="$HOME/.config/hypr/envs.conf"
-HYPR_CONF="$HOME/.config/hypr/hyprland.conf"
+HYPR_ENVS="$HOME/.config/hypr/envs.lua"
+HYPR_CONF="$HOME/.config/hypr/hyprland.lua"
 STEAM_REGISTRY="$HOME/.local/share/Steam/registry.vdf"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hypr-lua.sh"
 
 # ── colores ───────────────────────────────────────────────────────────────────
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -45,44 +46,38 @@ warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
 # ── validaciones ──────────────────────────────────────────────────────────────
-for f in "$HYPR_ENVS" "$HYPR_CONF"; do
-    if [[ ! -f "$f" ]]; then
-        error "No se encontró: $f"
-        error "Asegúrate de que Hyprland está configurado antes de ejecutar este script."
-        exit 1
-    fi
-done
+if [[ ! -f "$HYPR_CONF" ]]; then
+    error "No se encontró: $HYPR_CONF"
+    error "Asegúrate de que Omarchy 4.x está configurado antes de ejecutar este script."
+    exit 1
+fi
 
 # ── paso 1: STEAM_FORCE_DESKTOPUI_SCALING ─────────────────────────────────────
 SCALING_VAR="STEAM_FORCE_DESKTOPUI_SCALING"
-if grep -q "$SCALING_VAR" "$HYPR_ENVS"; then
-    info "Paso 1/3: $SCALING_VAR ya configurado en envs.conf — sin cambios."
-else
-    cat >> "$HYPR_ENVS" <<'EOF'
+ENV_BLOCK=$(cat <<'LUA'
+-- Steam: forzar escala de UI a 1x para evitar que se vea enorme en el monitor
+-- Full HD cuando la pantalla de la laptop es 3K (scale=2.0).
+hl.env("STEAM_FORCE_DESKTOPUI_SCALING", "1")
+LUA
+)
 
-# Steam: forzar escala de UI a 1x para evitar que se vea enorme en el monitor
-# Full HD cuando la pantalla de la laptop es 3K (scale=2.0).
-env = STEAM_FORCE_DESKTOPUI_SCALING,1
-EOF
-    info "Paso 1/3: $SCALING_VAR=1 añadido a envs.conf."
-fi
+hypr_lua_upsert_block "$HYPR_ENVS" "steam-display" "$ENV_BLOCK"
+hypr_lua_require_module "$HYPR_CONF" "hypr.envs"
+info "Paso 1/3: $SCALING_VAR=1 asegurado en envs.lua."
 
-# ── paso 2: windowrule de tamaño ─────────────────────────────────────────────
-# Omarchy ya incluye en ~/.local/share/omarchy/default/hypr/apps/steam.conf:
-#   windowrule = size 1100 700, match:class steam, match:title Steam
+# ── paso 2: regla de tamaño ───────────────────────────────────────────────────
+# Omarchy 4.x ya incluye la regla en default/hypr/apps/steam.lua:
+#   o.window({ class = "steam", title = "Steam" }, { center = true, size = { 1100, 700 } })
 # Con STEAM_FORCE_DESKTOPUI_SCALING=1 esa regla es suficiente.
-# Solo añadimos aquí si el usuario quiere un tamaño diferente al default.
-SIZE_RULE="windowrule = size 1100 700, match:class steam, match:title Steam"
-if grep -qF "size.*steam.*Steam\|size.*Steam.*steam" "$HYPR_CONF" 2>/dev/null || \
-   grep -q "omarchy.*steam\|steam.*omarchy" "$HYPR_CONF" 2>/dev/null; then
+if [[ -f "${OMARCHY_PATH:-/usr/share/omarchy}/default/hypr/apps/steam.lua" ]]; then
     info "Paso 2/3: Omarchy ya gestiona el tamaño de la ventana de Steam — sin cambios."
 else
-    cat >> "$HYPR_CONF" <<EOF
-
-# Steam: tamaño fijo para la ventana principal (cabe en Full HD y en la laptop)
-$SIZE_RULE
-EOF
-    info "Paso 2/3: Windowrule de tamaño para Steam añadida a hyprland.conf."
+    SIZE_BLOCK=$(cat <<'LUA'
+o.window({ class = "steam", title = "Steam" }, { size = { 1100, 700 } })
+LUA
+)
+    hypr_lua_upsert_block "$HYPR_CONF" "steam-size" "$SIZE_BLOCK"
+    info "Paso 2/3: Regla de tamaño para Steam añadida a hyprland.lua."
 fi
 
 # ── paso 3 (opcional): resetear geometría guardada ───────────────────────────
