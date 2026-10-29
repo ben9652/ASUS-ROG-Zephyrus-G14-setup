@@ -156,6 +156,15 @@ el nombre del efecto.
 \texttt{asusd} expone únicamente estos cinco modos para este modelo; el resto de
 efectos de la familia ROG no están disponibles (la detección los descarta).
 
+\subsection{\texttt{keyboard-aura-static}}
+
+Fija el teclado en un color (efecto Static). Sin argumentos abre la paleta de
+\texttt{zenity}; \texttt{keyboard-aura-static screen} toma el color de la
+pantalla con \texttt{hyprpicker} y \texttt{keyboard-aura-static ff00ff} aplica
+el hex directo. El color queda guardado por \texttt{asusd} y sobrevive
+arranques, suspensiones y desbloqueos (los servicios del paso 17 reaplican el
+efecto guardado). Si el modo ambiental estaba activo, lo detiene primero.
+
 \subsection{\texttt{keyboard-slash-cycle}}
 
 Cicla entre los 16 modos del slash bar y muestra una notificación:
@@ -177,11 +186,12 @@ continuo; el cambio de modo se aplicará en el próximo evento.
 
 \subsection{\texttt{keyboard-aura-boot}}
 
-Aplica el efecto Aura y el brillo al arranque, al volver de suspensión y al
-desbloquear. No vive en \texttt{\textasciitilde/.local/bin/} sino en
-\texttt{/usr/local/bin/}, y se ejecuta mediante los servicios
-\texttt{keyboard-aura-boot.service} y \texttt{keyboard-aura-resume.service}.
-Ver la sección \ref{sec:arranque} para el detalle y el motivo.
+Reaplica el efecto Aura guardado por \texttt{asusd} (\texttt{LedModeData}) y el
+brillo al arranque, al volver de suspensión y al desbloquear. No vive en
+\texttt{\textasciitilde/.local/bin/} sino en \texttt{/usr/local/bin/}, y se
+ejecuta mediante los servicios \texttt{keyboard-aura-boot.service} y
+\texttt{keyboard-aura-resume.service}. Ver la sección \ref{sec:arranque} para el
+detalle y el motivo.
 
 \subsection{\texttt{keyboard-aura-watch}}
 
@@ -190,6 +200,15 @@ Aura al desbloquear. No usa el socket IPC de Hyprland porque \texttt{hyprlock}
 usa \texttt{ext-session-lock} (no \texttt{wlr-layer-shell}) y no emite evento
 de capa. Se instala en \texttt{\textasciitilde/.local/bin/} y corre vía el
 servicio de usuario \texttt{keyboard-aura-watch.service}.
+
+\subsection{\texttt{keyboard-backlight-timeout}}
+
+Daemon Python de usuario que replica el comportamiento del teclado en Windows:
+apaga el LED tras 180 segundos sin tecleo y lo devuelve al brillo anterior al
+presionar una tecla. Se instala en \texttt{\textasciitilde/.local/bin/} y corre
+vía el servicio de usuario \texttt{keyboard-backlight-timeout.service}. El
+tiempo se configura con \texttt{KEYBOARD\_BACKLIGHT\_IDLE} y requiere que el
+usuario pertenezca al grupo \texttt{input}.
 
 % ─────────────────────────────────────────────
 \section{Efecto persistente (arranque, suspensión y desbloqueo)}
@@ -203,15 +222,14 @@ se da energía. En Linux eso no lo hace el firmware sino \texttt{asusd}, que
 guarda el último estado en \texttt{/etc/asusd/aura\_<id>.ron} y lo reaplica
 unos segundos después de arrancar el sistema (nunca durante BIOS/Limine).
 
-Ese estado guardado no es necesariamente Rainbow Cycle:
+Ese estado guardado es el que se reaplica: Rainbow Cycle, el color fijo de
+\texttt{keyboard-aura-static}, o cualquier otro efecto elegido con \texttt{Fn+F4}:
 
 \begin{itemize}[nosep]
-  \item el modo cambia con \texttt{Fn+F4} (\texttt{keyboard-aura-cycle}) y con
-        el modo ambiental (\texttt{Super+F4});
   \item \texttt{asusd} 6.5.0 reaplica al arrancar el modo y los power states,
         pero \textbf{no} el brillo: si quedó en Off, el teclado arranca
-        apagado aunque el modo guardado sea Rainbow Cycle. Lo mismo ocurre al
-        volver de suspensión/hibernación;
+        apagado aunque haya un modo guardado. Lo mismo ocurre al volver de
+        suspensión/hibernación;
   \item Omarchy apaga el teclado al bloquear la pantalla
         (\texttt{omarchy-system-lock}) y lo restaura al desbloquear con
         \texttt{brightnessctl}; si el estado guardado quedó en 0, el teclado
@@ -223,10 +241,11 @@ Ese estado guardado no es necesariamente Rainbow Cycle:
 \texttt{setup-keyboard-aura-boot.sh} (paso 17) instala:
 
 \begin{itemize}[nosep]
-  \item \texttt{/usr/local/bin/keyboard-aura-boot} — aplica
-        \texttt{asusctl aura effect rainbow-cycle --speed med} y
+  \item \texttt{/usr/local/bin/keyboard-aura-boot} — lee el efecto guardado
+        (\texttt{LedModeData} de asusd) y lo reaplica junto con
         \texttt{asusctl leds set med}, reintentando hasta 10 s si \texttt{asusd}
-        todavía no responde.
+        todavía no responde; si falla, cae en Rainbow Cycle. También se puede
+        forzar un modo fijo con \texttt{KEYBOARD\_AURA\_MODE} en el unit.
   \item \texttt{keyboard-aura-boot.service} — \texttt{Type=oneshot},
         \texttt{After}/\texttt{Requires} de \texttt{asusd.service} y
         \texttt{Before=display-manager.service}, para que el efecto quede
@@ -257,10 +276,30 @@ EC y el sistema operativo todavía no puede escribirle el efecto. El servicio
 aplica justo antes del login; iluminarlo antes no es posible desde Linux.
 
 % ─────────────────────────────────────────────
+\section{Apagado del teclado por inactividad}
+
+En Windows el LED del teclado se apaga tras dos o tres minutos sin tecleo y
+vuelve al presionar cualquier tecla. En Linux ese timeout no está expuesto por
+el EC, así que se replica con el daemon \texttt{keyboard-backlight-timeout}
+(paso 21):
+
+\begin{itemize}[nosep]
+  \item lee los eventos de \texttt{/dev/input/event*} (requiere grupo
+        \texttt{input});
+  \item excluye los botones de mouse/touchpad (códigos \texttt{BTN\_*});
+  \item tras \texttt{KEYBOARD\_BACKLIGHT\_IDLE} segundos (defecto 180) guarda
+        el brillo actual y lo pone en 0 con \texttt{brightnessctl};
+  \item al primer keypress restaura el brillo guardado.
+\end{itemize}
+
+No interfiere con el apagado que hace Omarchy al bloquear la pantalla: si el
+LED ya está en 0 sin haber sido apagado por el daemon, no hace nada.
+
+% ─────────────────────────────────────────────
 \section{Atajos de teclado}
 
-Los atajos se registran en \texttt{\textasciitilde/.config/hypr/bindings.conf}
-(Hyprland).
+Los atajos se registran en \texttt{\textasciitilde/.config/hypr/bindings.lua}
+(Hyprland con Omarchy 4.x/Quattro).
 
 \begin{center}
 \begin{tabular}{lll}
@@ -268,6 +307,7 @@ Los atajos se registran en \texttt{\textasciitilde/.config/hypr/bindings.conf}
   Tecla & Acción & Script \\
   \midrule
   \textbf{Fn+F4} (XF86Launch3)     & Siguiente efecto Aura   & \texttt{keyboard-aura-cycle} \\
+  \textbf{Super+Shift+F4}           & Elegir color fijo (paleta) & \texttt{keyboard-aura-static} \\
   \textbf{Super+F4}                 & Activar/desactivar modo ambiental & \texttt{keyboard-ambient-toggle} \\
   \textbf{Super+\textbackslash}     & Siguiente modo slash bar & \texttt{keyboard-slash-cycle} \\
   \bottomrule
@@ -293,8 +333,9 @@ El script realiza las siguientes acciones:
 \begin{enumerate}
   \item Escribe los cuatro scripts en \texttt{\textasciitilde/.local/bin/} con
         permisos de ejecución.
-  \item Añade las tres líneas \texttt{bindd} a
-        \texttt{\textasciitilde/.config/hypr/bindings.conf} si no existen.
+  \item Añade los cuatro atajos \texttt{o.bind(...)} a
+        \texttt{\textasciitilde/.config/hypr/bindings.lua} como un bloque
+        idempotente (no duplica ni pisa otros atajos).
 \end{enumerate}
 
 Para que el teclado se mantenga siempre en Rainbow Cycle (arranque, suspensión
