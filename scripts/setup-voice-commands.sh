@@ -12,7 +12,7 @@
 #   ~/.config/voice-commands/commands.conf ← frases → comandos
 #   ~/.local/share/vosk/model-es/        ← modelo de español (~40 MB)
 #
-# Atajos añadidos a bindings.conf:
+# Atajos añadidos a bindings.lua:
 #   Ctrl+Return      → Walker (lanzador de aplicaciones)
 #   Super+Shift+V    → Visual Studio Code
 #   Super+Alt+V      → Activar/desactivar comandos de voz
@@ -29,7 +29,9 @@ REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
 BIN_DIR="$REAL_HOME/.local/bin"
 CONF_DIR="$REAL_HOME/.config/voice-commands"
 MODEL_DIR="$REAL_HOME/.local/share/vosk/model-es"
-HYPR_BINDINGS="$REAL_HOME/.config/hypr/bindings.conf"
+HYPR_BINDINGS="$REAL_HOME/.config/hypr/bindings.lua"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hypr-lua.sh"
 
 MODEL_URL="https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip"
 MODEL_ZIP="/tmp/vosk-model-small-es.zip"
@@ -438,30 +440,17 @@ EOF
     echo "    $CONF_DIR/commands.conf creado."
 fi
 
-# ── Keybindings ───────────────────────────────────────────────────────────────
+# ── Keybindings (Omarchy 4.x: bindings.lua) ───────────────────────────────────
 
-# Limpiar binding legado (Ctrl+Return -> Walker), ya no se usa.
-if [[ -f "$HYPR_BINDINGS" ]]; then
-    sed -i '/Ctrl+Return: abrir Walker/d' "$HYPR_BINDINGS"
-    sed -i '/bindd = CTRL, RETURN, Launch apps, exec, omarchy-launch-walker/d' "$HYPR_BINDINGS"
-fi
+BINDINGS_BLOCK=$(cat <<'LUA'
+o.bind("SUPER + SHIFT + V", "Visual Studio Code", { launch = "code" })
+o.bind("SUPER + ALT + V", "Toggle voice commands", "voice-commands-toggle")
+o.bind("SUPER + ALT + D", "Toggle voice dictation", "voice-dictation-toggle")
+LUA
+)
 
-if grep -q 'voice-commands-toggle' "$HYPR_BINDINGS" 2>/dev/null; then
-    echo "    Keybindings de voz ya presentes, sin cambios."
-else
-    cat >> "$HYPR_BINDINGS" << 'BIND'
-
-# Super+Shift+V: abrir Visual Studio Code
-bindd = SUPER SHIFT, V, Visual Studio Code, exec, uwsm-app -- code
-
-# Super+Alt+V: activar / desactivar comandos de voz
-bindd = SUPER ALT, V, Toggle voice commands, exec, voice-commands-toggle
-
-# Super+Alt+D: activar / desactivar dictado de voz
-bindd = SUPER ALT, D, Toggle voice dictation, exec, voice-dictation-toggle
-BIND
-    echo "    Keybindings añadidos (Super+Shift+V, Super+Alt+V, Super+Alt+D)."
-fi
+hypr_lua_upsert_block "$HYPR_BINDINGS" "voice-commands" "$BINDINGS_BLOCK"
+echo "    Keybindings sincronizados (Super+Shift+V, Super+Alt+V, Super+Alt+D)."
 
 # ── Propiedad de los archivos ─────────────────────────────────────────────────
 
@@ -476,8 +465,7 @@ chown -R "$REAL_USER:" "$BIN_DIR/voice-commands" \
 # ── Recargar Hyprland ─────────────────────────────────────────────────────────
 
 if [[ -n "${WAYLAND_DISPLAY:-}${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
-    hyprctl keyword input:kb_layout us,latam &>/dev/null || true
-    sudo -u "$REAL_USER" hyprctl reload &>/dev/null || true
+    hypr_lua_reload
 fi
 
 echo ""
