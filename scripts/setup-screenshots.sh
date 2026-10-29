@@ -20,7 +20,9 @@ set -euo pipefail
 
 REAL_USER="${SUDO_USER:-$USER}"
 REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
-HYPR_BINDINGS="$REAL_HOME/.config/hypr/bindings.conf"
+HYPR_BINDINGS="$REAL_HOME/.config/hypr/bindings.lua"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hypr-lua.sh"
 
 # ── 1. Dependencias ───────────────────────────────────────────────────────────
 
@@ -32,36 +34,27 @@ echo "  ✓ grim slurp wl-clipboard hyprpicker satty"
 
 echo "==> [2/2] Configurando atajos de captura de pantalla..."
 
-if grep -qF 'XF86Launch5' "$HYPR_BINDINGS" 2>/dev/null; then
-    echo "    Binding Fn+F6 (XF86Launch5) ya existe, sin cambios."
-else
-    cat >> "$HYPR_BINDINGS" << 'BIND'
+BINDINGS_BLOCK=$(cat <<'LUA'
+o.bind("XF86Launch5", "Smart screenshot", "omarchy-capture-screenshot")
 
-# Fn+F6 (XF86Launch5): captura inteligente — selecciona región o ventana
-bindd = , XF86Launch5, Smart screenshot, exec, omarchy-capture-screenshot
-BIND
-    echo "    ✓ Binding Fn+F6 (XF86Launch5) añadido."
-fi
+-- Omarchy 4.x asigna Super+Shift+S a Google Maps; lo reemplazamos por la
+-- selección de región (estilo Windows Snipping Tool).
+hl.unbind("SUPER + SHIFT + S")
+o.bind("SUPER + SHIFT + S", "Region screenshot", "omarchy-capture-screenshot region")
+LUA
+)
 
-if grep -qE '^[^#]*SUPER SHIFT.*,.*S.*screenshot|^[^#]*screenshot.*SUPER SHIFT.*S' "$HYPR_BINDINGS" 2>/dev/null; then
-    echo "    Binding Super+Shift+S ya existe, sin cambios."
-else
-    # Eliminar la línea comentada preexistente si la hay, para no dejar ruido
-    sed -i '/^#.*bind.*SUPER SHIFT.*S.*omarchy-capture-screenshot/d' "$HYPR_BINDINGS"
-
-    cat >> "$HYPR_BINDINGS" << 'BIND'
-
-# Super+Shift+S: selección de región (estilo Windows Snipping Tool)
-bindd = SUPER SHIFT, S, Region screenshot, exec, omarchy-capture-screenshot region
-BIND
-    echo "    ✓ Binding Super+Shift+S añadido."
-fi
+hypr_lua_upsert_block "$HYPR_BINDINGS" "screenshots" "$BINDINGS_BLOCK"
+echo "    ✓ Atajos de captura sincronizados en $HYPR_BINDINGS"
 
 # ── Recargar atajos ───────────────────────────────────────────────────────────
 
 if [[ -n "${WAYLAND_DISPLAY:-}${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
-    sudo -u "$REAL_USER" hyprctl keyword bind ", XF86Launch5, exec, omarchy-capture-screenshot" &>/dev/null || true
-    sudo -u "$REAL_USER" hyprctl keyword bind "SUPER SHIFT, S, exec, omarchy-capture-screenshot region" &>/dev/null || true
+    if [[ $EUID -eq 0 ]]; then
+        sudo -u "$REAL_USER" hyprctl reload &>/dev/null || true
+    else
+        hyprctl reload &>/dev/null || true
+    fi
 fi
 
 echo ""
