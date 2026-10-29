@@ -1,112 +1,91 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # setup-keyboard-layout-switcher.sh
 #
-# Configura cambio de distribución de teclado US <-> Latam con Super+` (grave)
-# y agrega un indicador en la barra de Waybar.
+# Configura el cambio de distribución de teclado US <-> Latam con Super+` (grave)
+# y asegura el indicador del idioma activo en la barra del shell de Omarchy.
 #
 # NOTA: Se usa un keybinding de Hyprland (Super+grave) en lugar de la opción XKB
 # grp:alt_shift_toggle, porque dicha opción colisiona con Shift+Alt+Tab
 # (cambio de foco entre ventanas) al dispararse a nivel XKB antes de procesar Tab.
 #
+# Omarchy 4.x (Quattro) usa configuración Lua en ~/.config/hypr/*.lua y el shell
+# de Omarchy (Quickshell) en lugar de Waybar. El widget del idioma se llama
+# `omarchy.keyboard-layout` y ya viene incluido en el catálogo del shell.
+#
 # Seguro de ejecutar múltiples veces (idempotente).
 
 set -euo pipefail
 
-HYPR_INPUT="$HOME/.config/hypr/input.conf"
-HYPR_BINDINGS="$HOME/.config/hypr/bindings.conf"
-WAYBAR_CONFIG="$HOME/.config/waybar/config.jsonc"
-WAYBAR_STYLE="$HOME/.config/waybar/style.css"
-TS=$(date +%s)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hypr-lua.sh"
+
+REAL_USER="${SUDO_USER:-$USER}"
+REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
+
+HYPR_INPUT="$REAL_HOME/.config/hypr/input.lua"
+HYPR_BINDINGS="$REAL_HOME/.config/hypr/bindings.lua"
+
+run_as_user() {
+    if [[ $EUID -eq 0 && -n "${SUDO_USER:-}" ]]; then
+        sudo -u "$REAL_USER" "$@"
+    else
+        "$@"
+    fi
+}
 
 # ─── 1. Hyprland: distribuciones de teclado ──────────────────────────────────
 
-echo "==> [1/4] Configurando input.conf..."
+echo "==> [1/3] Configurando input.lua..."
 
-cp "$HYPR_INPUT" "$HYPR_INPUT.bak.$TS"
+INPUT_BLOCK=$(cat <<'LUA'
+hl.config({
+  input = {
+    -- Alternancia US <-> Latam con Super+grave (ver bindings.lua).
+    kb_layout = "us,latam",
+    kb_options = "",
 
-# Agregar 'latam' al kb_layout (reemplaza cualquier valor anterior)
-sed -i 's|^\(\s*\)kb_layout\s*=.*|\1kb_layout = us,latam|' "$HYPR_INPUT"
+    touchpad = {
+      -- Scroll natural (deslizar arriba → baja el contenido).
+      natural_scroll = true,
+      clickfinger_behavior = true,
+      scroll_factor = 0.4,
+    },
+  },
+})
+LUA
+)
 
-# Asegurar que kb_options NO incluya grp:alt_shift_toggle (usamos keybinding de
-# Hyprland en su lugar para evitar conflicto con Shift+Alt+Tab)
-sed -i 's|^\(\s*\)kb_options\s*=.*|\1kb_options =|' "$HYPR_INPUT"
-
-# Touchpad: scroll natural (deslizar arriba → baja el contenido)
-sed -i 's|^\(\s*\)#\s*natural_scroll\s*=.*|\1natural_scroll = true|' "$HYPR_INPUT"
+hypr_lua_upsert_block "$HYPR_INPUT" "keyboard-layout" "$INPUT_BLOCK"
 
 echo "    kb_layout y kb_options actualizados (sin grp:alt_shift_toggle)."
 echo "    natural_scroll activado en touchpad."
 
-# ─── 2. Hyprland: keybinding Super+grave para cambiar distribución ─────────────
+# ─── 2. Hyprland: keybinding Super+grave para cambiar distribución ────────────
 
-echo "==> [2/4] Configurando bindings.conf..."
+echo "==> [2/3] Configurando bindings.lua..."
 
-if grep -q 'switchxkblayout' "$HYPR_BINDINGS"; then
-    echo "    Keybinding de switchxkblayout ya presente, sin cambios."
+BINDINGS_BLOCK=$(cat <<'LUA'
+o.bind("SUPER + grave", "Switch keyboard layout", "hyprctl switchxkblayout all next")
+LUA
+)
+
+hypr_lua_upsert_block "$HYPR_BINDINGS" "keyboard-layout" "$BINDINGS_BLOCK"
+
+echo "    Keybinding Super+grave asegurado."
+
+# ─── 3. Shell de Omarchy: indicador del idioma ───────────────────────────────
+
+echo "==> [3/3] Asegurando el widget del idioma en el shell de Omarchy..."
+
+if command -v omarchy >/dev/null 2>&1; then
+    # `omarchy bar put` es idempotente: si el widget ya está, no lo mueve.
+    if run_as_user omarchy bar put omarchy.keyboard-layout --after omarchy.clock >/dev/null 2>&1; then
+        echo "    Widget omarchy.keyboard-layout presente en la barra."
+    else
+        echo "    ⚠ No se pudo confirmar el widget; revisá el shell tras iniciar sesión."
+    fi
 else
-    cat >> "$HYPR_BINDINGS" <<'BIND'
-
-# Cambio de distribución de teclado US <-> Latam (Super+`)
-bindd = SUPER, grave, Switch keyboard layout, exec, hyprctl switchxkblayout all next
-BIND
-    echo "    Keybinding Super+grave agregado."
-fi
-
-# ─── 3. Waybar: agregar módulo hyprland/language ─────────────────────────────
-
-echo "==> [3/4] Configurando waybar config.jsonc..."
-
-cp "$WAYBAR_CONFIG" "$WAYBAR_CONFIG.bak.$TS"
-
-python3 - "$WAYBAR_CONFIG" <<'PYEOF'
-import sys
-
-path = sys.argv[1]
-with open(path, 'r') as f:
-    content = f.read()
-
-# Agregar "hyprland/language" en modules-right, antes de "cpu"
-if '"hyprland/language"' not in content:
-    content = content.replace(
-        '"pulseaudio",\n    "cpu"',
-        '"pulseaudio",\n    "hyprland/language",\n    "cpu"'
-    )
-    print("    Módulo agregado a modules-right.")
-else:
-    print("    Módulo ya presente en modules-right, sin cambios.")
-
-# Agregar bloque de configuración del módulo, antes del bloque "cpu"
-if '"hyprland/language":' not in content:
-    lang_block = (
-        '  "hyprland/language": {\n'
-        '    "format": "\u2328 {short}",\n'
-        '    "tooltip-format": "Layout: {long}"\n'
-        '  },\n\n  '
-    )
-    content = content.replace('  "cpu": {', lang_block + '"cpu": {')
-    print("    Bloque de configuración del módulo agregado.")
-else:
-    print("    Bloque de configuración ya presente, sin cambios.")
-
-with open(path, 'w') as f:
-    f.write(content)
-PYEOF
-
-# ─── 4. Waybar: estilos CSS para el indicador ────────────────────────────────
-
-echo "==> [4/4] Configurando waybar style.css..."
-
-if grep -q '#language' "$WAYBAR_STYLE"; then
-    echo "    Estilos de #language ya presentes, sin cambios."
-else
-    cat >> "$WAYBAR_STYLE" <<'CSS'
-
-#language {
-  min-width: 52px;
-  margin-right: 7px;
-}
-CSS
-    echo "    Estilos de #language agregados."
+    echo "    omarchy no disponible; el widget se añadirá al iniciar sesión."
 fi
 
 # ─── Aplicar cambios ──────────────────────────────────────────────────────────
@@ -115,9 +94,9 @@ echo ""
 echo "==> Aplicando cambios..."
 
 if command -v hyprctl &>/dev/null && hyprctl version &>/dev/null 2>&1; then
-    hyprctl reload
+    hypr_lua_reload
     sleep 0.5
-    ERRORS=$(hyprctl configerrors 2>/dev/null || true)
+    ERRORS=$(hypr_lua_config_errors)
     if [[ -n "$ERRORS" ]]; then
         echo "ADVERTENCIA: errores en la configuración de Hyprland:"
         echo "$ERRORS"
@@ -125,15 +104,13 @@ if command -v hyprctl &>/dev/null && hyprctl version &>/dev/null 2>&1; then
         echo "    Hyprland recargado sin errores."
     fi
 else
-    echo "    Hyprland no está corriendo; recárgalo manualmente (Super+Shift+R)."
+    echo "    Hyprland no está corriendo; recárgalo manualmente (hyprctl reload)."
 fi
 
 if command -v omarchy &>/dev/null; then
-    omarchy restart waybar
-    echo "    Waybar reiniciado."
-else
-    echo "    omarchy no disponible; reinicia Waybar manualmente."
+    run_as_user omarchy restart shell >/dev/null 2>&1 || true
+    echo "    Shell de Omarchy reiniciado."
 fi
 
 echo ""
-echo "Listo. Usá Alt+Shift para cambiar entre 'us' y 'latam'."
+echo "Listo. Usá Super+\` para cambiar entre 'us' y 'latam'."
