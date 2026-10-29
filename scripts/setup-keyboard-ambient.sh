@@ -15,7 +15,9 @@
 set -euo pipefail
 
 BINDIR="$HOME/.local/bin"
-HYPR_BINDINGS="$HOME/.config/hypr/bindings.conf"
+HYPR_BINDINGS="$HOME/.config/hypr/bindings.lua"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hypr-lua.sh"
 
 mkdir -p "$BINDIR"
 
@@ -347,6 +349,62 @@ BASHEOF
 chmod +x "$BINDIR/keyboard-aura-cycle"
 echo "✓ ~/.local/bin/keyboard-aura-cycle instalado"
 
+# ── 3b. Script de color fijo: keyboard-aura-static ────────────────────────────
+cat > "$BINDIR/keyboard-aura-static" << 'BASHEOF'
+#!/usr/bin/env bash
+# keyboard-aura-static: fija el teclado en un color (efecto Aura Static).
+# El color queda guardado por asusd y sobrevive arranques y desbloqueos.
+#
+# Uso:
+#   keyboard-aura-static            → selector de color (paleta)
+#   keyboard-aura-static screen     → elige un color de la pantalla (hyprpicker)
+#   keyboard-aura-static ff00ff     → aplica el hex directo
+#
+# Si el modo ambiental está activo, lo desactiva primero.
+
+PIDFILE="/tmp/keyboard-ambient.pid"
+
+rgb_to_hex() {
+    printf '%s' "$1" | tr -dc '0-9,' | awk -F, '{printf "%02x%02x%02x", $1, $2, $3}'
+}
+
+hex=""
+case "${1:-picker}" in
+    picker)
+        if command -v zenity >/dev/null 2>&1; then
+            rgb="$(zenity --color-selection --show-palette --title="Color del teclado" 2>/dev/null)" || exit 0
+            hex="$(rgb_to_hex "$rgb")"
+        else
+            notify-send "Teclado" "zenity no está instalado" --icon=dialog-error -t 3000
+            exit 1
+        fi
+        ;;
+    screen)
+        hex="$(hyprpicker -f hex -l -q 2>/dev/null)" || exit 0
+        ;;
+    *)
+        hex="$1"
+        ;;
+esac
+
+hex="${hex,,}"
+if [[ ! "$hex" =~ ^[0-9a-f]{6}$ ]]; then
+    notify-send "Teclado" "Color inválido: '$hex'" --icon=dialog-error -t 3000
+    exit 1
+fi
+
+# Detener modo ambiental si estaba corriendo
+if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    kill "$(cat "$PIDFILE")"
+    rm -f "$PIDFILE"
+fi
+
+asusctl aura effect static -c "$hex"
+notify-send "Teclado" "Color fijo #$hex" --icon=input-keyboard -t 2000
+BASHEOF
+chmod +x "$BINDIR/keyboard-aura-static"
+echo "✓ ~/.local/bin/keyboard-aura-static instalado"
+
 # ── 4. Script del slash bar: keyboard-slash-cycle ─────────────────────────────
 cat > "$BINDIR/keyboard-slash-cycle" << 'BASHEOF'
 #!/usr/bin/env bash
@@ -369,52 +427,21 @@ BASHEOF
 chmod +x "$BINDIR/keyboard-slash-cycle"
 echo "✓ ~/.local/bin/keyboard-slash-cycle instalado"
 
-# ── 5. Keybindings en Hyprland ────────────────────────────────────────────────
-# ── 4. Keybindings en Hyprland ────────────────────────────────────────────────
-BINDING_AMBIENT='bindd = SUPER, F4, Toggle ambient keyboard lighting, exec, keyboard-ambient-toggle'
-BINDING_AURA='bindd = , XF86Launch3, Aura next effect, exec, keyboard-aura-cycle'
-MARKER='# Add extra bindings'
+# ── 5. Keybindings en Hyprland (Omarchy 4.x: bindings.lua) ────────────────────
+HYPR_BINDINGS_BLOCK=$(cat <<'LUA'
+o.bind("SUPER + F4", "Toggle ambient keyboard lighting", "keyboard-ambient-toggle")
+o.bind("XF86Launch3", "Aura next effect", "keyboard-aura-cycle")
+o.bind("SUPER + backslash", "Slash bar next mode", "keyboard-slash-cycle")
+o.bind("SUPER + SHIFT + F4", "Keyboard fixed colour", "keyboard-aura-static")
+LUA
+)
 
-BINDING_SLASH='bindd = SUPER, backslash, Slash bar next mode, exec, keyboard-slash-cycle'
-
-if [[ ! -f "$HYPR_BINDINGS" ]]; then
-    echo "⚠ No se encontró $HYPR_BINDINGS — añade estos bindings manualmente:"
-    echo "  $BINDING_AMBIENT"
-    echo "  $BINDING_AURA"
-    echo "  $BINDING_SLASH"
-else
-    # Ambient toggle (Super+F4)
-    if grep -qF 'keyboard-ambient-toggle' "$HYPR_BINDINGS"; then
-        echo "✓ Keybinding ambient ya presente (sin cambios)"
-    else
-        sed -i "s|${MARKER}|${MARKER}\n${BINDING_AMBIENT}|" "$HYPR_BINDINGS"
-        echo "✓ Keybinding Super+F4 (ambient) añadido"
-    fi
-
-    # Aura cycle (Fn+F4 = XF86Launch3)
-    if grep -qF 'keyboard-aura-cycle' "$HYPR_BINDINGS"; then
-        echo "✓ Keybinding Aura ya presente (sin cambios)"
-    else
-        sed -i "/keyboard-ambient-toggle/a \\
-\\
-# Fn+F4 (Aura key = XF86Launch3): ciclar efectos Aura como en Armoury Crate\\
-${BINDING_AURA}" "$HYPR_BINDINGS"
-        echo "✓ Keybinding Fn+F4 (Aura = XF86Launch3) añadido"
-    fi
-    # Slash bar (Super+\)
-    if grep -qF 'keyboard-slash-cycle' "$HYPR_BINDINGS"; then
-        echo "✓ Keybinding slash bar ya presente (sin cambios)"
-    else
-        sed -i "/keyboard-aura-cycle/a \\
-\\
-# Super+\\\\ : ciclar modo del slash bar (barra deslizante de la tapa)\\
-${BINDING_SLASH}" "$HYPR_BINDINGS"
-        echo "✓ Keybinding Super+\\ (slash bar) añadido"
-    fi
-fi
+hypr_lua_upsert_block "$HYPR_BINDINGS" "keyboard-ambient" "$HYPR_BINDINGS_BLOCK"
+echo "✓ Keybindings de iluminación sincronizados en $HYPR_BINDINGS"
 
 echo ""
 echo "Listo. Recarga Hyprland (hyprctl reload) para activar los nuevos atajos:"
-echo "  Fn+F4      → siguiente efecto Aura"
-echo "  Super+F4   → activar/desactivar modo ambiental (screen-sync)"
-echo "  Super+\\   → siguiente modo del slash bar"
+echo "  Fn+F4            → siguiente efecto Aura"
+echo "  Super+F4         → activar/desactivar modo ambiental (screen-sync)"
+echo "  Super+Shift+F4   → elegir color fijo del teclado"
+echo "  Super+\\         → siguiente modo del slash bar"
