@@ -9,7 +9,10 @@
 
 set -euo pipefail
 
-HYPR_BINDINGS="${HOME}/.config/hypr/bindings.conf"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/hypr-lua.sh"
+
+HYPR_BINDINGS="${HOME}/.config/hypr/bindings.lua"
 
 # ── 1. Instalar calcurse ───────────────────────────────────────────────────────
 
@@ -28,20 +31,15 @@ else
     echo "  ✓ calcurse instalado"
 fi
 
-# ── 2. Keybinding en Hyprland ─────────────────────────────────────────────────
+# ── 2. Keybinding en Hyprland (Omarchy 4.x: bindings.lua) ─────────────────────
 
-BINDING='bindd = SUPER SHIFT ALT, C, Calendar TUI, exec, omarchy-launch-or-focus-tui calcurse'
-BINDING_COMMENT='# Super+Shift+Alt+C: calendario TUI (par TUI de Super+Shift+C = calendario web)'
+BINDING_BLOCK=$(cat <<'LUA'
+o.bind("SUPER + SHIFT + ALT + C", "Calendar TUI", { tui = "calcurse", focus = true })
+LUA
+)
 
-if [[ ! -f "$HYPR_BINDINGS" ]]; then
-    echo "⚠ No se encontró $HYPR_BINDINGS — añade el binding manualmente:"
-    echo "  $BINDING"
-elif grep -qF 'omarchy-launch-or-focus-tui calcurse' "$HYPR_BINDINGS"; then
-    echo "  · Keybinding calcurse ya presente (sin cambios)"
-else
-    printf '\n%s\n%s\n' "$BINDING_COMMENT" "$BINDING" >> "$HYPR_BINDINGS"
-    echo "  ✓ Keybinding Super+Shift+Alt+C añadido"
-fi
+hypr_lua_upsert_block "$HYPR_BINDINGS" "calcurse" "$BINDING_BLOCK"
+echo "  ✓ Keybinding Super+Shift+Alt+C sincronizado"
 
 echo ""
 echo "  Super+Shift+C      → Calendario web"
