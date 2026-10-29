@@ -1,81 +1,36 @@
 #!/usr/bin/env bash
 # setup-hyprland-compat.sh
 #
-# Corrige incompatibilidades entre Omarchy 3.x y Hyprland 0.48+
-# presentes en el archivo de configuración por defecto de Omarchy:
+# Histórico: corregía dos incompatibilidades de Omarchy 3.x con Hyprland 0.48+
+# editando ~/.local/share/omarchy/default/hypr/looknfeel.conf.
 #
-#   ~/.local/share/omarchy/default/hypr/looknfeel.conf
+# Omarchy 4.x (Quattro) ya no usa looknfeel.conf: la configuración de Hyprland
+# pasó a Lua (looknfeel.lua) y esos valores inválidos ya vienen corregidos de
+# origen. Además, /usr/share/omarchy es propiedad del paquete y no debe editarse.
 #
-# Problemas que resuelve:
-#
-#   1. col.border_locked_active  = -1   → valor de color inválido en Hyprland ≥ 0.48
-#      col.border_locked_inactive = -1     (antes significaba "heredar"; ya no se acepta)
-#
-#   2. dwindle { pseudotile = true }    → opción eliminada en Hyprland ≥ 0.48
-#
-# El script es idempotente: puede ejecutarse varias veces sin efecto adicional.
-# Si Omarchy se actualiza y corrige estos errores en origen, el script simplemente
-# no encontrará las cadenas a reemplazar y no modificará nada.
+# Por eso este paso ahora es un no-op informativo: se mantiene para que
+# setup.sh siga funcionando y para detectar si queda alguna instalación vieja.
 #
 # Uso: sudo bash setup-hyprland-compat.sh
 # (invocado desde setup.sh)
 
 set -euo pipefail
 
-REAL_USER="${SUDO_USER:-$USER}"
-REAL_HOME="$(getent passwd "$REAL_USER" | cut -d: -f6)"
-LOOKNFEEL="$REAL_HOME/.local/share/omarchy/default/hypr/looknfeel.conf"
+OMARCHY_PATH="${OMARCHY_PATH:-/usr/share/omarchy}"
 
-# ── Verificar que Omarchy está instalado ──────────────────────────────────────
-
-if [[ ! -f "$LOOKNFEEL" ]]; then
-    echo "  ✗ No se encontró $LOOKNFEEL"
-    echo "    ¿Está instalado Omarchy? Omite este paso."
+if [[ -f "$OMARCHY_PATH/default/hypr/looknfeel.lua" ]]; then
+    echo "  · Omarchy ya usa configuración Lua (looknfeel.lua)."
+    echo "  · No hay nada que parchear: los valores de Hyprland 0.48+ ya son válidos."
+    echo "  · Además /usr/share/omarchy es de solo lectura (propiedad del paquete)."
     exit 0
 fi
 
-echo "==> [1/2] Corrigiendo colores de borde de grupos (col.border_locked_*)..."
-
-CHANGED_COLORS=0
-
-if grep -qF 'col.border_locked_active = -1' "$LOOKNFEEL"; then
-    sed -i 's/col\.border_locked_active = -1/col.border_locked_active = $activeBorderColor/' "$LOOKNFEEL"
-    echo "    ✓ col.border_locked_active  : -1  →  \$activeBorderColor"
-    CHANGED_COLORS=1
-else
-    echo "    ✓ col.border_locked_active ya tiene un valor válido, sin cambios."
+if [[ -f "$OMARCHY_PATH/default/hypr/looknfeel.conf" ]]; then
+    echo "  ⚠ Se detectó una instalación vieja de Omarchy 3.x (looknfeel.conf)."
+    echo "    Este repo ya apunta a Omarchy 4.x (Quattro) y no modifica archivos"
+    echo "    del paquete. Actualizá Omarchy con: omarchy update"
+    exit 0
 fi
 
-if grep -qF 'col.border_locked_inactive = -1' "$LOOKNFEEL"; then
-    sed -i 's/col\.border_locked_inactive = -1/col.border_locked_inactive = $inactiveBorderColor/' "$LOOKNFEEL"
-    echo "    ✓ col.border_locked_inactive: -1  →  \$inactiveBorderColor"
-    CHANGED_COLORS=1
-else
-    echo "    ✓ col.border_locked_inactive ya tiene un valor válido, sin cambios."
-fi
-
-echo "==> [2/2] Eliminando opción eliminada 'pseudotile' del bloque dwindle..."
-
-if grep -qE '^\s*pseudotile\s*=' "$LOOKNFEEL"; then
-    # Comentar la línea para dejar trazabilidad de qué se tocó
-    sed -i '/^\s*pseudotile\s*=/s/^/# [compat] /' "$LOOKNFEEL"
-    echo "    ✓ Línea 'pseudotile' comentada (opción eliminada en Hyprland ≥ 0.48)."
-else
-    echo "    ✓ Línea 'pseudotile' no encontrada o ya corregida, sin cambios."
-fi
-
-# ── Recargar si Hyprland está corriendo ──────────────────────────────────────
-
-if [[ -n "${HYPRLAND_INSTANCE_SIGNATURE:-}" ]]; then
-    sudo -u "$REAL_USER" hyprctl reload &>/dev/null && \
-        echo "    ✓ Hyprland recargado sin errores." || \
-        echo "    ⚠  hyprctl reload falló; recarga manualmente con: hyprctl reload"
-fi
-
-echo ""
-echo "Compatibilidad Omarchy ↔ Hyprland corregida."
-echo "  Los errores de arranque 'failed to parse -1 as a color' y"
-echo "  'config option <dwindle:pseudotile> does not exist' ya no aparecerán."
-echo ""
-echo "  Nota: si ejecutas 'omarchy update' en el futuro, vuelve a correr"
-echo "  este script por si la actualización sobreescribe looknfeel.conf."
+echo "  · No se encontró la configuración por defecto de Omarchy."
+echo "    Se omite este paso."
